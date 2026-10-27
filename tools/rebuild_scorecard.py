@@ -15,7 +15,7 @@ from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.cli import (
+from apps.worker.cli import (
     _aplicar_costo_real,
     _print_scorecard,
     _scorecard,

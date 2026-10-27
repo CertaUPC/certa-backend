@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.cli import _scorecard
+from apps.worker.cli import _scorecard
 from src.finding_validation.application.internal.commandservices.compare_models_command_service import (
     Comparison,
     ModelRun,

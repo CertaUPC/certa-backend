@@ -156,7 +156,7 @@ class TestElEsquemaSeCreaDesdeCadaPuntoDeEntrada:
     reproducir lo que ocurre en una máquina limpia.
     """
 
-    ENTRADAS = ("src.cli", "src.worker", "src.main")
+    ENTRADAS = ("apps.worker.cli", "apps.worker.loop", "apps.api.main")
 
     @pytest.mark.parametrize("modulo", ENTRADAS)
     def test_crea_el_esquema_en_un_interprete_limpio(self, modulo, tmp_path):

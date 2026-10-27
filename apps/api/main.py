@@ -7,19 +7,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from .experimentation.interfaces.rest.experiment_router import (
+from src.experimentation.interfaces.rest.experiment_router import (
     router as experiment_router,
 )
-from .iam.interfaces.rest.auth_router import router as auth_router
-from .finding_validation.interfaces.rest.executions_router import (
+from src.iam.interfaces.rest.auth_router import router as auth_router
+from src.finding_validation.interfaces.rest.executions_router import (
     router as executions_router,
 )
-from .finding_validation.interfaces.rest.projects_router import (
+from src.finding_validation.interfaces.rest.projects_router import (
     router as projects_router,
 )
-from .shared.composition import Container
-from .shared.config import get_settings
-from .shared.database import Base
+from src.shared.composition import Container
+from src.shared.config import get_settings
+from src.shared.database import Base
 
 logging.basicConfig(
     level=logging.INFO,

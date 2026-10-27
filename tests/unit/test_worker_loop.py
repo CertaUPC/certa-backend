@@ -11,7 +11,7 @@ pruebas.
 
 import asyncio
 
-from src.worker import WorkerLoop
+from apps.worker.loop import WorkerLoop
 
 
 class ColaFalsa:

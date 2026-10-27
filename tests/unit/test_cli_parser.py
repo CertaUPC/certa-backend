@@ -15,7 +15,7 @@ import textwrap
 
 import pytest
 
-from src import cli
+from apps.worker import cli
 
 # Una orden mínima por subcomando, con lo obligatorio y nada más.
 MINIMAS = {
@@ -78,9 +78,9 @@ def test_check_puede_partir_de_un_sarif_ya_generado():
 def test_las_ordenes_que_documenta_la_cabecera_se_analizan():
     """Lo que el módulo enseña como ejemplo tiene que poder correrse."""
     documentadas = [
-        shlex.split(linea.strip().removeprefix("py -m src.cli"))
+        shlex.split(linea.strip().removeprefix("py -m apps.worker.cli"))
         for linea in (cli.__doc__ or "").splitlines()
-        if linea.strip().startswith("py -m src.cli")
+        if linea.strip().startswith("py -m apps.worker.cli")
     ]
     assert documentadas, "la cabecera dejó de documentar órdenes"
     for orden in documentadas:

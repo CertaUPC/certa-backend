@@ -7,7 +7,7 @@ services:
     # por su cuenta, de modo que sin este paso la base quedaria vacia y todo
     # recorrido responderia error en el primer despliegue.
     buildCommand: pip install -r requirements.txt && alembic upgrade head
-    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       # El origen del cliente web. Sin el, el navegador bloquea toda peticion.
@@ -35,6 +35,6 @@ services:
 # El trabajador no se declara aquí. Corre en la máquina donde reside el código
 # analizado, que es el único sitio desde donde puede leer los archivos: lee del
 # disco, arma el fragmento y consulta al modelo, de modo que el repositorio no
-# se transfiere a ninguna parte. Se lanza con `python -m src.worker` contra la
+# se transfiere a ninguna parte. Se lanza con `python -m apps.worker` contra la
 # misma base, con REPOSITORY_ROOT apuntando al árbol que va a analizar. El
 # diagrama físico de la arquitectura lo sitúa ahí y no en la nube.

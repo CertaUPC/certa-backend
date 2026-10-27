@@ -1,0 +1,6 @@
+# El trabajador y el CLI, en la maquina donde reside el codigo
+# analizado. No instala servidor web: nadie le hace peticiones.
+-r ../../requirements.txt
+httpx>=0.27.0
+tree-sitter>=0.23.0
+tree-sitter-java>=0.23.0

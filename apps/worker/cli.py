@@ -5,10 +5,10 @@ abrir la aplicación. Códigos de salida pensados para un paso de integración:
     1  hay hallazgos que superan el umbral
     2  el análisis o la validación fallaron
 
-    py -m src.cli analyze ./repo --project "Mi proyecto"
-    py -m src.cli validate <execution-id>
-    py -m src.cli check ./repo --fail-on real
-    py -m src.cli compare <execution-id> --model a --model b --model c
+    py -m apps.worker.cli analyze ./repo --project "Mi proyecto"
+    py -m apps.worker.cli validate <execution-id>
+    py -m apps.worker.cli check ./repo --fail-on real
+    py -m apps.worker.cli compare <execution-id> --model a --model b --model c
 """
 
 import argparse
@@ -22,20 +22,20 @@ from sqlalchemy import select
 
 import src.shared.database_experiment  # noqa: F401  registra sus tablas
 
-from .experimentation.domain.services.metrics_calculator import MetricsCalculator
-from .finding_validation.domain.entities.execution import Execution
-from .finding_validation.domain.entities.verdict import VerdictValue
-from .finding_validation.domain.value_objects.scope_filter import ScopeFilter
-from .finding_validation.infrastructure.external.sarif_parser import (
+from src.experimentation.domain.services.metrics_calculator import MetricsCalculator
+from src.finding_validation.domain.entities.execution import Execution
+from src.finding_validation.domain.entities.verdict import VerdictValue
+from src.finding_validation.domain.value_objects.scope_filter import ScopeFilter
+from src.finding_validation.infrastructure.external.sarif_parser import (
     SarifError,
     parse_sarif_file,
 )
-from .finding_validation.infrastructure.external.semgrep_analyzer import (
+from src.finding_validation.infrastructure.external.semgrep_analyzer import (
     AnalysisFailed,
     AnalyzerUnavailable,
     SemgrepAnalyzer,
 )
-from .finding_validation.infrastructure.persistence.sql_repositories import (
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlExecutionRepository,
     SqlFindingRepository,
     SqlVerdictRepository,
@@ -44,12 +44,12 @@ from .finding_validation.infrastructure.persistence.sql_repositories import (
 # por clave foránea. Sin este import el metadata queda incompleto y crear el
 # esquema en una base nueva falla. No se usa nada de él: se importa para que
 # la tabla quede registrada.
-from .iam.infrastructure.persistence import models as _cuentas  # noqa: F401
-from .shared.composition import Container
-from .shared.config import get_settings
-from .shared.database import Base, ProjectRow
-from .shared.tracing import correlate, install_memory_sink
-from .spoc_export import RunContext, export
+from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401
+from src.shared.composition import Container
+from src.shared.config import get_settings
+from src.shared.database import Base, ProjectRow
+from src.shared.tracing import correlate, install_memory_sink
+from src.spoc_export import RunContext, export
 
 
 async def _ensure_schema(container: Container) -> None:
@@ -144,7 +144,7 @@ async def cmd_analyze(args: argparse.Namespace) -> int:
     if not admitidos:
         print("  El análisis no dejó nada que validar.")
     else:
-        print(f"  Para validarlos:  py -m src.cli validate {execution.id}")
+        print(f"  Para validarlos:  py -m apps.worker.cli validate {execution.id}")
 
     await container.dispose()
     return 0

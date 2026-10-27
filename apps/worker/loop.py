@@ -11,8 +11,8 @@ El bucle no reimplementa nada: llama a los servicios de aplicación que ya
 existen. Su único trabajo es tomar de la cola, seguir vivo y no llevarse el
 proceso por delante cuando algo falla.
 
-    py -m src.worker
-    py -m src.worker --lote 50 --espera 15
+    py -m apps.worker
+    py -m apps.worker --lote 50 --espera 15
 """
 
 import argparse
@@ -25,11 +25,11 @@ from collections.abc import Callable
 from uuid import UUID
 
 # Registra la tabla de cuentas, que executions referencia. Ver cli.py.
-from .iam.infrastructure.persistence import models as _cuentas  # noqa: F401
-from .shared import database_experiment as _estudio  # noqa: F401
-from .shared.composition import Container
-from .shared.config import get_settings
-from .shared.tracing import correlate, install_memory_sink
+from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401
+from src.shared import database_experiment as _estudio  # noqa: F401
+from src.shared.composition import Container
+from src.shared.config import get_settings
+from src.shared.tracing import correlate, install_memory_sink
 
 logger = logging.getLogger("certa.worker")
 

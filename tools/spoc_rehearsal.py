@@ -159,7 +159,7 @@ def main():
 
     def corre(titulo, args, script=None):
         print(f"\n{'=' * 62}\n{titulo}\n{'=' * 62}")
-        cmd = [str(PY)] + (["-c", script] if script else ["-m", "src.cli"] + args)
+        cmd = [str(PY)] + (["-c", script] if script else ["-m", "apps.worker.cli"] + args)
         r = subprocess.run(cmd, cwd=RAIZ, env=entorno, capture_output=True,
                            text=True, encoding="utf-8", errors="replace", check=False)
         print(r.stdout.strip()[:2600])

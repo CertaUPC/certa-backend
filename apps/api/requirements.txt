@@ -1,0 +1,6 @@
+# El servicio web. No instala tree-sitter: no abre archivos de codigo.
+-r ../../requirements.txt
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.2.0

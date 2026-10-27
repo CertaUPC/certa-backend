@@ -1,6 +1,6 @@
 """Dibuja la evidencia gráfica de la prueba de concepto.
 
-Lee el paquete que deja `py -m src.cli compare --out-dir` y produce las figuras
+Lee el paquete que deja `py -m apps.worker.cli compare --out-dir` y produce las figuras
 del anexo. No recalcula nada: toma los números del cuadro de resultados y del
 detalle por veredicto, de modo que lo que se ve sea lo mismo que se reportó.
 

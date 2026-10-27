@@ -26,7 +26,7 @@ verificar en una máquina sin entorno preparado.
 ```
 copy .env.example .env
 venv\Scripts\python.exe -m alembic upgrade head
-venv\Scripts\python.exe -m uvicorn src.main:app --reload
+venv\Scripts\python.exe -m uvicorn apps.api.main:app --reload
 ```
 
 Documentación interactiva en <http://127.0.0.1:8000/docs>.

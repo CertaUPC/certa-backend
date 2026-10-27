@@ -24,7 +24,7 @@ from src.finding_validation.infrastructure.external.scripted_language_model impo
     ScriptedLanguageModel,
     exploitable,
 )
-from src.main import app
+from apps.api.main import app
 from src.shared.composition import Container
 from src.shared.config import Settings
 from src.shared.database import Base, ProjectRow
@@ -333,7 +333,7 @@ class TestIngest:
         """
         from sqlalchemy import select
 
-        from src.main import app
+        from apps.api.main import app
         from src.shared.database import ExecutionRow
         from src.iam.infrastructure.persistence.models import UserRow
 
