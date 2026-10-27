@@ -40,7 +40,7 @@ jobs:
         run: python tools/check_architecture.py
 
       - name: Estilo y errores estáticos
-        run: ruff check src tests tools
+        run: ruff check src apps tests tools
 
       - name: Pruebas
         run: pytest --cov=src --cov-report=term-missing --cov-report=xml

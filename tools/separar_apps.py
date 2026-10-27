@@ -98,9 +98,19 @@ tree-sitter-java>=0.23.0
 
 
 def absolutos(texto: str) -> tuple[str, int]:
-    """Pasa los imports relativos del archivo movido a absolutos."""
-    nuevo, n = re.subn(r"^from \.(\w)", r"from src.\1", texto, flags=re.M)
-    nuevo, m = re.subn(r"^from \. import ", "from src import ", nuevo, flags=re.M)
+    """Pasa los imports relativos del archivo movido a absolutos.
+
+    El espacio de delante entra en el patron y vuelve a salir tal cual.
+    Sin eso solo se convierten los imports que empiezan la linea, y los que
+    viven dentro de una funcion se quedan relativos apuntando a un paquete
+    que en el destino no existe. No se nota al importar el modulo, porque un
+    import dentro de una funcion no corre hasta que alguien la llama, de modo
+    que la bateria pasa entera y el arranque en despliegue revienta.
+    """
+    nuevo, n = re.subn(r"^(\s*)from \.(\w)", r"\1from src.\2",
+                       texto, flags=re.M)
+    nuevo, m = re.subn(r"^(\s*)from \. import ", r"\1from src import ",
+                       nuevo, flags=re.M)
     return nuevo, n + m
 
 

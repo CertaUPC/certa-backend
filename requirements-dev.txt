@@ -1,4 +1,9 @@
--r requirements.txt
+# Para verificar hace falta instalar las dos unidades y no solo el nucleo
+# comun: la bateria importa los tres puntos de entrada, y cada uno trae sus
+# propios terceros. Con solo la raiz, la recoleccion de pruebas se cae en el
+# primer `from apps.api.main import app`, porque ahi no hay fastapi.
+-r apps/api/requirements.txt
+-r apps/worker/requirements.txt
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0

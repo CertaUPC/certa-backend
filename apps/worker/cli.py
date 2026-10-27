@@ -382,7 +382,7 @@ def _aplicar_costo_real(rows: list[dict], verdicts: list, modelos: list[str],
     costo nominal es peor que nada solo si nadie lo sabe. La corrida no se
     detiene por esto, que sería tirar horas de medición por una columna.
     """
-    from .model_pricing import PriceUnavailable, costs_by_run, fetch_prices
+    from src.model_pricing import PriceUnavailable, costs_by_run, fetch_prices
 
     try:
         tarifas = fetch_prices(settings, modelos)

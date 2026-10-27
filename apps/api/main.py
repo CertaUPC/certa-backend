@@ -39,8 +39,8 @@ async def sembrar_primer_administrador(container, settings) -> None:
         return
     from sqlalchemy import func, select as _select
 
-    from .iam.infrastructure.persistence.models import UserRow
-    from .iam.infrastructure.security import hash_password
+    from src.iam.infrastructure.persistence.models import UserRow
+    from src.iam.infrastructure.security import hash_password
 
     async with container.sessions() as s:
         cuantas = await s.scalar(_select(func.count()).select_from(UserRow))
