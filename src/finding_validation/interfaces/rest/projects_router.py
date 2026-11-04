@@ -1,13 +1,19 @@
 """Proyectos, que es lo que agrupa las ejecuciones.
 
-Se identifican por ruta de repositorio dentro de su dueño: volver a cargarla
-devuelve el proyecto que ya existe, para que las corridas de un mismo código no
-queden repartidas entre dos filas.
+Se identifican por su nombre dentro de su dueño: volver a crearlo devuelve el
+que ya existe, para que las corridas de un mismo código no queden repartidas
+entre dos filas.
 
-Dentro de su dueño, y ahí está la diferencia: la ruta era única globalmente, de
-modo que dos clientes que analizaran «/repos/mi-app» compartían proyecto y con
-él los hallazgos del otro. Los conjuntos públicos no tienen dueño y los ve todo
-el mundo, que es lo que se espera de OWASP Benchmark.
+Dentro de su dueño, y ahí está la diferencia: dos cuentas pueden llamar igual
+a sus proyectos sin compartir nada. Los conjuntos públicos no tienen dueño y
+los ve todo el mundo, que es lo que se espera de OWASP Benchmark.
+
+Antes la identidad era la ruta del repositorio. Se quitó porque prometía algo
+que no cumplía: quien abre los archivos es el trabajador, que corre donde el
+código vive y los resuelve contra su REPOSITORY_ROOT. La ruta escrita en el
+navegador no decidía nada, se guardaba con el formato del sistema de quien la
+escribía, y no coincidía con la que dejaba la línea de órdenes, de modo que el
+mismo repositorio acababa en dos proyectos.
 """
 
 from uuid import UUID, uuid4
@@ -78,7 +84,7 @@ async def list_projects(session: SessionDep, user: UserDep) -> list[ProjectRespo
 async def create_project(
     body: ProjectRequest, session: SessionDep, user: UserDep
 ) -> ProjectResponse:
-    """Crea el proyecto, o devuelve el que ya cubre esa ruta de repositorio.
+    """Crea el proyecto, o devuelve el que ya tiene ese nombre.
 
     Cualquier cuenta puede crear el suyo, y al crearlo queda como su
     administrador. Antes hacia falta un rango, de modo que quien se registraba
@@ -91,11 +97,19 @@ async def create_project(
             "Crear un proyecto exige una cuenta de persona",
         )
 
-    ruta = body.repository_path.strip() or body.name.strip()
+    nombre = body.name.strip()
+    if not nombre:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "El proyecto necesita un nombre"
+        )
+
+    # El nombre es lo que distingue a dos proyectos de la misma cuenta. Antes
+    # lo era la ruta del repositorio, que ya no se pide: el trabajador lee de
+    # su propio REPOSITORY_ROOT y la ruta no decidia nada.
     existente = (
         await session.execute(
             select(ProjectRow).where(
-                ProjectRow.repository_path == ruta,
+                ProjectRow.name == nombre,
                 ProjectRow.owner_id == str(user.user_id) if user.user_id else
                 ProjectRow.owner_id.is_(None),
             )
@@ -104,16 +118,13 @@ async def create_project(
     if existente is not None:
         return _to_response(existente, 0)
 
-    if not body.name.strip():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "El proyecto necesita un nombre"
-        )
-
     row = ProjectRow(
         id=str(uuid4()),
-        name=body.name.strip(),
+        name=nombre,
         language=body.language,
-        repository_path=ruta,
+        # La deja la linea de ordenes cuando analiza; al crearlo desde el
+        # cliente web todavia no se sabe sobre que arbol se correra.
+        repository_path="",
         is_public_dataset=body.is_public_dataset,
         # Un conjunto publico no es de nadie: lo ve todo el mundo y por eso no
         # lleva dueno. Lo demas pertenece a quien lo creo.

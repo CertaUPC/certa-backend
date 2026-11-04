@@ -57,9 +57,37 @@ async def _ensure_schema(container: Container) -> None:
         await conn.run_sync(Base.metadata.create_all)
 
 
-async def _project_id(container: Container, name: str, path: str) -> UUID:
-    """Encuentra el proyecto por su ruta, o lo crea."""
+async def _project_id(
+    container: Container, name: str, path: str, proyecto: str | None = None
+) -> UUID:
+    """El proyecto sobre el que se trabaja.
+
+    Con `--proyecto` se dice cual por su identificador, que es el que da el
+    cliente web. Es la forma recomendada: antes solo se podia emparejar por la
+    ruta, y como el cliente web guardaba la cadena tal cual y aqui se guardaba
+    la absoluta ya resuelta, el mismo repositorio acababa en dos proyectos.
+
+    Sin `--proyecto` se mantiene el emparejamiento por ruta, que sigue
+    sirviendo cuando todo el trabajo se hace desde la linea de ordenes.
+    """
     async with container.sessions() as s:
+        if proyecto:
+            try:
+                pid = UUID(str(proyecto))
+            except ValueError:
+                raise SystemExit(f"--proyecto no es un identificador: {proyecto!r}")
+            row = (
+                await s.execute(select(ProjectRow).where(ProjectRow.id == str(pid)))
+            ).scalar_one_or_none()
+            if row is None:
+                raise SystemExit(f"No existe el proyecto {pid}")
+            # Deja constancia del arbol sobre el que se corrio. El cliente web
+            # ya no la pide, de modo que hasta aqui estaba vacia.
+            if path and row.repository_path != path:
+                row.repository_path = path
+                await s.commit()
+            return pid
+
         row = (
             await s.execute(select(ProjectRow).where(ProjectRow.repository_path == path))
         ).scalar_one_or_none()
@@ -112,7 +140,9 @@ async def cmd_analyze(args: argparse.Namespace) -> int:
     )
     admitidos = scope.apply(findings)
 
-    project_id = await _project_id(container, args.project or Path(path).name, path)
+    project_id = await _project_id(
+        container, args.project or Path(path).name, path,
+        getattr(args, "proyecto", None))
 
     async with container.sessions() as s:
         execution = Execution(
@@ -440,7 +470,9 @@ async def cmd_check(args: argparse.Namespace) -> int:
     container = Container(settings)
     async with container.sessions() as s:
         executions = await SqlExecutionRepository(s).list_by_project(
-            await _project_id(container, args.project or "", str(Path(args.path).resolve()))
+            await _project_id(
+                container, args.project or "", str(Path(args.path).resolve()),
+                getattr(args, "proyecto", None))
         )
         if not executions:
             print("No hay ejecuciones que revisar.")
@@ -476,7 +508,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     def common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("path", help="Ruta del repositorio a analizar")
-        sp.add_argument("--project", help="Nombre del proyecto")
+        sp.add_argument("--proyecto", help="Identificador del proyecto, el que "
+                                           "muestra el cliente web. Lo "
+                                           "recomendado para no duplicarlo")
+        sp.add_argument("--project", help="Nombre del proyecto, solo si se "
+                                          "crea aquí por primera vez")
         sp.add_argument("--config", default="p/security-audit", help="Conjunto de reglas")
         sp.add_argument("--cwe", action="append", help="Acotar a esta categoría, repetible")
         sp.add_argument(

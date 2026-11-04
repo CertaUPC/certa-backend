@@ -267,21 +267,37 @@ class TestProjects:
         assert r.status_code == 201
         assert r.json()["name"] == "Juliet"
 
-    async def test_same_repository_does_not_duplicate(self, client):
-        """Duplicar repartiría las ejecuciones de un mismo código en dos filas."""
+    async def test_same_name_does_not_duplicate(self, client):
+        """Duplicar repartiría las ejecuciones de un mismo código en dos filas.
+
+        La identidad era la ruta del repositorio. Se quitó porque la escribía
+        un navegador y no decidía nada: quien lee los archivos es el
+        trabajador, contra su propio REPOSITORY_ROOT.
+        """
         token = await _token(client)
         primero = await client.post(
             "/api/v1/projects",
-            json={"name": "Juliet", "repository_path": "/repos/juliet"},
+            json={"name": "Juliet"},
             headers=_auth(token),
         )
         segundo = await client.post(
             "/api/v1/projects",
-            json={"name": "Otro nombre", "repository_path": "/repos/juliet"},
+            json={"name": "Juliet"},
             headers=_auth(token),
         )
         assert segundo.json()["id"] == primero.json()["id"]
         assert segundo.json()["name"] == "Juliet"
+
+    async def test_no_pide_ruta_de_repositorio(self, client):
+        """El alta no admite una ruta de disco venida del navegador."""
+        token = await _token(client)
+        r = await client.post(
+            "/api/v1/projects",
+            json={"name": "Portal", "repository_path": "C:/Windows"},
+            headers=_auth(token),
+        )
+        assert r.status_code in (200, 201), r.text
+        assert r.json()["repository_path"] == ""
 
     async def test_developer_cannot_create(self, client):
         """Reformulada con la pertenencia al proyecto, conservando lo que la
@@ -1282,14 +1298,13 @@ class TestNadieVeLoAjeno:
     alta publica de entonces, eso era: registrarse y leer el codigo ajeno.
     """
 
-    async def _proyecto_de(self, client, quien, path):
+    async def _proyecto_de(self, client, quien, nombre):
         token = await _token(client, quien)
         r = await client.post(
             "/api/v1/projects",
             json={
-                "name": f"App de {quien}",
+                "name": nombre,
                 "language": "java",
-                "repository_path": path,
                 "is_public_dataset": False,
             },
             headers=_auth(token),
@@ -1297,26 +1312,24 @@ class TestNadieVeLoAjeno:
         assert r.status_code in (200, 201), r.text
         return token, r.json()
 
-    async def test_dos_clientes_con_la_misma_ruta_no_comparten_proyecto(self, client):
+    async def test_dos_clientes_con_el_mismo_nombre_no_comparten_proyecto(self, client):
         """Era el fallo mas silencioso: el segundo recibia el proyecto del
         primero y creia que era suyo."""
-        _, uno = await self._proyecto_de(client, "investigador", "/repos/mi-app")
-        _, otro = await self._proyecto_de(client, "lider_tecnico", "/repos/mi-app")
+        _, uno = await self._proyecto_de(client, "investigador", "Mi app")
+        _, otro = await self._proyecto_de(client, "lider_tecnico", "Mi app")
         assert uno["id"] != otro["id"]
 
     async def test_el_listado_no_trae_proyectos_ajenos(self, client):
-        await self._proyecto_de(client, "investigador", "/repos/suyo")
-        token_ajeno, _ = await self._proyecto_de(
-            client, "lider_tecnico", "/repos/otro"
-        )
-        rutas = {
-            p["repository_path"]
+        await self._proyecto_de(client, "investigador", "El suyo")
+        token_ajeno, _ = await self._proyecto_de(client, "lider_tecnico", "El otro")
+        nombres = {
+            p["name"]
             for p in (
                 await client.get("/api/v1/projects", headers=_auth(token_ajeno))
             ).json()
         }
-        assert "/repos/otro" in rutas
-        assert "/repos/suyo" not in rutas
+        assert "El otro" in nombres
+        assert "El suyo" not in nombres
 
     async def test_los_conjuntos_publicos_los_ve_todo_el_mundo(self, client):
         """Un conjunto de referencia no es de nadie: si no se viera, cada
@@ -1328,10 +1341,12 @@ class TestNadieVeLoAjeno:
                 await client.get("/api/v1/projects", headers=_auth(token))
             ).json()
         }
+        # Lo siembra la fixture con su ruta puesta, como hace la línea de
+        # órdenes al analizar. Por el API ya no entra ninguna.
         assert "/repos/bench" in rutas
 
     async def test_el_listado_de_ejecuciones_tampoco(self, client):
-        await self._proyecto_de(client, "investigador", "/repos/con-ejecucion")
+        await self._proyecto_de(client, "investigador", "Con ejecución")
         token_ajeno = await _token(client, "lider_tecnico")
         r = await client.get("/api/v1/executions", headers=_auth(token_ajeno))
         assert r.status_code == 200

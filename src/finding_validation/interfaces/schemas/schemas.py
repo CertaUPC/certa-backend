@@ -121,12 +121,16 @@ class SessionThemeRequest(BaseModel):
 
 
 class ProjectRequest(BaseModel):
+    """Lo que hace falta para abrir un proyecto.
+
+    Sin ruta de repositorio a proposito. Quien lee el codigo es el trabajador,
+    que corre donde ese codigo vive y lo resuelve contra su REPOSITORY_ROOT;
+    pedirla aqui prometia que el sistema iria a buscarla ahi, y no es cierto.
+    Ademas la escribia un navegador, de modo que una ruta de disco entraba al
+    sistema desde fuera sin que nadie la necesitara.
+    """
+
     name: str = Field(min_length=1, max_length=200)
-    repository_path: str = Field(
-        default="",
-        description="Ruta o URL del repositorio. Identifica al proyecto de forma "
-        "única; si se omite se usa el nombre.",
-    )
     language: str = Field(default="java", max_length=50)
     is_public_dataset: bool = Field(
         default=False,
@@ -140,6 +144,8 @@ class ProjectResponse(BaseModel):
     id: UUID
     name: str
     language: str
+    # La escribe la linea de ordenes al analizar, para dejar constancia de
+    # sobre que arbol se corrio. El cliente web no la pide ni la muestra.
     repository_path: str
     is_public_dataset: bool
     execution_count: int

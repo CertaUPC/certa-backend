@@ -68,7 +68,7 @@ class ProjectRow(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("owner_id", "repository_path", name="uq_project_owner_path"),
+        UniqueConstraint("owner_id", "name", name="uq_project_owner_name"),
     )
 
 
