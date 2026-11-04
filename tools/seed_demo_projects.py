@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import random
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -31,15 +32,11 @@ from dotenv import load_dotenv
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-import sys
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.demo_fragments import fragmento  # noqa: E402
-
-from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401,E402
-from src.shared import database_experiment as _estudio  # noqa: F401,E402
-from src.shared.database import (  # noqa: E402
+from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401
+from src.shared import database_experiment as _estudio  # noqa: F401
+from src.shared.database import (
     ContextRow,
     ExecutionRow,
     FindingRow,
@@ -47,6 +44,7 @@ from src.shared.database import (  # noqa: E402
     ProjectRow,
     VerdictRow,
 )
+from tools.demo_fragments import fragmento
 
 RAIZ = Path(__file__).resolve().parents[1]
 def _registro(despliegue: bool) -> Path:

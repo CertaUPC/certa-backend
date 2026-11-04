@@ -14,6 +14,9 @@ import pytest_asyncio
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+# Registra las tablas del esquema completo: access_grants referencia a users.
+import src.iam.infrastructure.persistence.models
+import src.shared.database_experiment  # noqa: F401
 from src.iam.domain.access_grant import (
     AccessGrant,
     GrantKind,
@@ -26,10 +29,6 @@ from src.iam.infrastructure.persistence.grant_repository import (
 )
 from src.iam.interfaces.rest.dependencies import CurrentUser
 from src.shared.database import Base
-
-# Registra las tablas del esquema completo: access_grants referencia a users.
-import src.iam.infrastructure.persistence.models  # noqa: F401
-import src.shared.database_experiment  # noqa: F401
 
 
 @pytest_asyncio.fixture
@@ -233,7 +232,8 @@ class TestFechasSinZona:
             subject_kind=GrantKind.WORKER,
             subject_id="proyecto-1",
             secret_hash="a" * 64,
-            expires_at=datetime(2027, 1, 1, 0, 0),  # sin zona, como SQLite
+            # Sin zona es justo lo que se prueba: así la devuelve SQLite.
+            expires_at=datetime(2027, 1, 1, 0, 0),  # noqa: DTZ001
         )
         assert g.expires_at.tzinfo is not None
         assert g.is_active  # y comparar no revienta

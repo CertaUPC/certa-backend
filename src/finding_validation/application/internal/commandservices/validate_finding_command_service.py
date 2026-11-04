@@ -91,7 +91,7 @@ class ValidateFindingCommandService:
         # --- Etapa 1: recuperación de contexto ------------------------------
         try:
             context = await self._reader.recover_context(finding, caller_depth)
-        except Exception as exc:  # noqa: BLE001 - el adaptador define sus fallos
+        except Exception as exc:
             outcome.error = f"No se pudo recuperar el contexto: {exc}"
             outcome.context_failed = True
             outcome.trace.append(outcome.error)
@@ -127,7 +127,7 @@ class ValidateFindingCommandService:
 
             try:
                 judgement = await self._model.judge(finding, context, retry_hint)
-            except Exception as exc:  # noqa: BLE001 - el adaptador define sus fallos
+            except Exception as exc:
                 # Una consulta fallida es de este hallazgo y no del lote. Antes
                 # subia sin atrapar y se llevaba por delante la corrida entera:
                 # una sola respuesta fuera de contrato entre decenas dejaba el

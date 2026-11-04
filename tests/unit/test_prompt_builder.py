@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """El inventario del prompt declara lo que el codigo entregado trae.
 
 Se escribe despues de encontrarlo corriendo el estudio. El recuperador pegaba

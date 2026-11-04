@@ -244,7 +244,7 @@ class TestMedicionAdversarial:
             enclosing_function="find",
             text=FUENTE,
             available_lines=frozenset(
-                list(range(PRIMERA, PRIMERA + total)) + [PRIMERA + 40]
+                [*range(PRIMERA, PRIMERA + total), PRIMERA + 40]
             ),
         )
         t = SemanticPreservingTransformer()

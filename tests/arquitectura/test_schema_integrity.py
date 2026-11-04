@@ -20,7 +20,7 @@ import pathlib
 
 import pytest
 
-import src.iam.infrastructure.persistence.models  # noqa: F401  (registra users)
+import src.iam.infrastructure.persistence.models
 import src.shared.database_experiment  # noqa: F401  (registra sus tablas)
 from src.shared.database import Base
 
@@ -171,7 +171,7 @@ class TestElEsquemaSeCreaDesdeCadaPuntoDeEntrada:
         )
         hecho = subprocess.run(
             [sys.executable, "-c", guion],
-            capture_output=True, text=True,
+            capture_output=True, text=True, check=False,
             cwd=str(pathlib.Path(__file__).resolve().parents[2]),
         )
         assert hecho.returncode == 0, (

@@ -4,8 +4,8 @@ PostgreSQL, memoria o un archivo."""
 from typing import Protocol
 from uuid import UUID
 
-from ..entities.decision import Decision
 from ..entities.code_context import CodeContext
+from ..entities.decision import Decision
 from ..entities.execution import Execution
 from ..entities.finding import Finding
 from ..entities.verdict import Verdict

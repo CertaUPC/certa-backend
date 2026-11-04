@@ -39,7 +39,7 @@ class Transformation:
         o = self.original.splitlines()
         t = self.transformed.splitlines()
         return abs(len(t) - len(o)) + sum(
-            1 for a, b in zip(o, t) if a != b
+            1 for a, b in zip(o, t, strict=False) if a != b
         )
 
 

@@ -105,7 +105,7 @@ class Capa:
     def hecho_breve(self, candidato: str, requisito: str) -> str:
         """El mismo dato que hecho(), en la forma corta que cabe en una celda."""
         breve = self.hechos_breves.get(candidato, {}).get(requisito)
-        return breve if breve else self.hecho(candidato, requisito)
+        return breve or self.hecho(candidato, requisito)
 
     def supervivientes(self) -> list[str]:
         return [c for c, r in self.cumplimiento.items() if all(r.values())]

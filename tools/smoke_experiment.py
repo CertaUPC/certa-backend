@@ -36,7 +36,8 @@ failed: list[str] = []
 
 
 def check(name: str, condition: bool) -> None:
-    global passed
+    # Un contador de guion suelto, no un estado compartido de verdad.
+    global passed  # noqa: PLW0603
     if condition:
         passed += 1
         print(f"  ok    {name}")
@@ -50,7 +51,7 @@ def raises(name: str, exc: type[Exception], fn) -> None:
         fn()
     except exc:
         check(name, True)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         check(f"{name} (esperaba {exc.__name__}, llegó {type(e).__name__})", False)
     else:
         check(f"{name} (no lanzó nada)", False)

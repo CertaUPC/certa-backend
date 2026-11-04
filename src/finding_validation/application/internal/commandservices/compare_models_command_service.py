@@ -222,7 +222,7 @@ class CompareModelsCommandService:
                     try:
                         with correlate():
                             outcome = await validator.execute(finding, repetition=rep)
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         # Un hallazgo que no se resuelve no puede llevarse por
                         # delante el lote entero: en una corrida de cientos de
                         # consultas, fallar en una tiraría el cuadro de

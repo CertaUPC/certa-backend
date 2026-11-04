@@ -1,0 +1,44 @@
+# Configuración de ruff, que antes no existía.
+#
+# Sin esto, y con `ruff>=0.8.0` en requirements-dev, la integración continua
+# instalaba la versión del día y heredaba el conjunto de reglas que esa versión
+# trajera. El 14 de setiembre del 2026 una versión nueva amplió las reglas por
+# omisión y la verificación quedó en rojo sin que nadie tocara el código: como
+# el estilo corre antes que las pruebas, dejaron de correr también pytest y las
+# migraciones, y así siguió siete semanas.
+#
+# Lo que arregla el problema no es pasar los errores de hoy, es que el conjunto
+# de reglas deje de cambiar solo. La versión va fijada en requirements-dev.txt.
+
+target-version = "py311"
+
+[lint]
+# Se vigila lo que delata un error, no lo que delata un gusto. Nada de largo
+# de línea ni de modernizar giros que ya funcionan: eso son doscientas
+# ochenta correcciones cosméticas que no arreglan nada y sí tocan todo.
+#
+#   E4/E7/E9  errores de pycodestyle, sin el largo de línea
+#   F         lo que pyflakes detecta: nombres sin usar, imports muertos
+#   I         importaciones ordenadas
+#   B         trampas conocidas (bugbear)
+#   SIM       condicionales que dicen lo mismo con menos
+#   RUF       las propias de ruff, incluida la del noqa que ya no silencia
+#   DTZ       fechas sin zona horaria
+#   ISC       concatenación implícita donde se lee como una coma olvidada
+#   PLW       avisos de pylint
+#   FURB      modernizaciones seguras
+select = ["E4", "E7", "E9", "F", "I", "B", "SIM", "RUF", "DTZ", "ISC",
+          "PLW", "FURB"]
+
+# B008 llamaría error al patrón con el que FastAPI declara sus dependencias,
+# que es como se escribe un router y no un descuido.
+ignore = ["B008"]
+
+[lint.per-file-ignores]
+# Las herramientas son guiones sueltos: añaden la raíz del repositorio a la
+# ruta de módulos y recién después importan de `src`. Los imports van debajo
+# porque tienen que ir debajo, no por descuido.
+"tools/**" = ["E402"]
+
+[lint.isort]
+known-first-party = ["src", "apps", "tools"]

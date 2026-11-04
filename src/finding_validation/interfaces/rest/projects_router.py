@@ -19,17 +19,17 @@ mismo repositorio acababa en dos proyectos.
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 
+from ....iam.infrastructure.persistence.models import UserRow
+from ....iam.interfaces.rest.dependencies import UserDep
 from ....shared.database import ExecutionRow, ProjectRow
-from ...domain.entities.membership import Membership, MemberRole
+from ....shared.rest import SessionDep
+from ...domain.entities.membership import MemberRole, Membership
 from ...infrastructure.persistence.membership_repository import (
     SqlMembershipRepository,
 )
 from ..schemas.schemas import ProjectRequest, ProjectResponse
-from ....iam.infrastructure.persistence.models import UserRow
-from ....iam.interfaces.rest.dependencies import UserDep
-from ....shared.rest import SessionDep
 
 router = APIRouter(prefix="/api/v1/projects", tags=["Proyectos"])
 

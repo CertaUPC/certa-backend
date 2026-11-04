@@ -30,20 +30,20 @@ from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from src.finding_validation.domain.entities.finding import Finding  # noqa: E402
-from src.finding_validation.domain.value_objects.code_location import (  # noqa: E402
+from src.finding_validation.domain.entities.finding import Finding
+from src.finding_validation.domain.value_objects.code_location import (
     CodeLocation,
 )
-from src.finding_validation.domain.value_objects.fingerprint import (  # noqa: E402
+from src.finding_validation.domain.value_objects.fingerprint import (
     Fingerprint,
 )
-from src.finding_validation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlCodeContextRepository,
 )
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
 
 PENDING = text(
     """
@@ -118,7 +118,7 @@ async def main(args) -> int:
 
             try:
                 context = await container.code_reader.recover_context(finding)
-            except Exception as exc:  # noqa: BLE001 - el adaptador define sus fallos
+            except Exception as exc:
                 tally[f"falla de recuperación: {type(exc).__name__}"] += 1
                 continue
 

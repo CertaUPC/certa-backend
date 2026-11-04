@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Separa los puntos de entrada del nucleo, en dos unidades desplegables.
 
 Hasta ahora el servicio y el trabajador vivian dentro de `src/` y compartian
@@ -108,9 +107,9 @@ def absolutos(texto: str) -> tuple[str, int]:
     que la bateria pasa entera y el arranque en despliegue revienta.
     """
     nuevo, n = re.subn(r"^(\s*)from \.(\w)", r"\1from src.\2",
-                       texto, flags=re.M)
+                       texto, flags=re.MULTILINE)
     nuevo, m = re.subn(r"^(\s*)from \. import ", r"\1from src import ",
-                       nuevo, flags=re.M)
+                       nuevo, flags=re.MULTILINE)
     return nuevo, n + m
 
 
@@ -132,7 +131,7 @@ def main() -> int:
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_text(texto, encoding="utf-8")
             subprocess.run(["git", "rm", "-q", "--cached", str(origen)],
-                           cwd=RAIZ, capture_output=True)
+                           cwd=RAIZ, capture_output=True, check=False)
             origen.unlink()
 
     print("\npaquetes y lanzador")

@@ -85,7 +85,7 @@ def main() -> int:
     while True:
         try:
             actual, usado = saldo(ajustes)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Una consulta fallida no debe matar al vigilante: si se cae, la
             # corrida se queda sin red.
             print(f"aviso: no se pudo leer el saldo ({type(exc).__name__})")

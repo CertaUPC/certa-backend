@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Repara las decisiones del estudio que quedaron sin sesion ni lote.
 
 Que paso. Durante las primeras sesiones el cliente no mandaba el
@@ -34,13 +33,14 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
+
 load_dotenv(RAIZ / ".env")
 
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from src.shared.database import normalize_database_url  # noqa: E402
+from src.shared.database import normalize_database_url
 
 SIN_ENLACE = """
     SELECT d.participant_id,

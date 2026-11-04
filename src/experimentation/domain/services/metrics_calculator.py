@@ -5,6 +5,7 @@ saca buena exactitud sobre un conjunto desbalanceado, y solo la matriz lo delata
 """
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 # Declarado en el Project Charter. Por encima de esta proporción en una sola
 # clase, la corrida no vale para comparar.
@@ -119,7 +120,7 @@ class MetricsCalculator:
     #
     # Los valores del dominio salen tal cual a la pantalla, y «no_explotable»
     # con su guion bajo no es una palabra que nadie diga.
-    _EN_CASTELLANO = {
+    _EN_CASTELLANO: ClassVar[dict[str, str]] = {
         "explotable": "es real",
         "no_explotable": "es falsa alarma",
         "indeterminado": "no se puede determinar",
@@ -183,6 +184,6 @@ class MetricsCalculator:
         if not total:
             return 0.0
         coincidencias = sum(
-            1 for valores in zip(*runs) if len(set(valores)) == 1
+            1 for valores in zip(*runs, strict=False) if len(set(valores)) == 1
         )
         return coincidencias / total

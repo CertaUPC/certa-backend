@@ -29,11 +29,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.experimentation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.experimentation.infrastructure.persistence.sql_repositories import (
     SqlBatchRepository,
 )
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
 
 
 def url_del_despliegue() -> str:

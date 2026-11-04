@@ -76,7 +76,7 @@ class TestComentarioDeValidacion:
         por definición, un juicio apoyado en algo que no es el código."""
         t = transformador.add_validation_comment(JAVA, 5)
         sin_comentarios = [
-            l for l in t.transformed.splitlines() if not l.strip().startswith("//")
+            x for x in t.transformed.splitlines() if not x.strip().startswith("//")
         ]
         assert sin_comentarios == JAVA.splitlines()
 

@@ -51,7 +51,7 @@ class CodeReaderRegistry:
             reader = TreeSitterCodeReader(
                 self._root, profile, self._max_lines, self._callee_depth
             )
-        except (ImportError, Exception) as exc:  # noqa: BLE001
+        except (ImportError, Exception) as exc:
             # Falta la gramática, o la consulta no compila contra ella. Se anota
             # una vez y se sigue: un perfil roto no puede parar el lote entero.
             self._unavailable[profile.name] = str(exc)

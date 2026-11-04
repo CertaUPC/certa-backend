@@ -7,7 +7,12 @@
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0
-ruff>=0.8.0
+# Fijada, no «la del día». Con un rango abierto, la integración continua
+# instalaba la versión más nueva cada vez y heredaba las reglas que esa
+# versión trajera: el 14 de setiembre del 2026 una amplió las reglas por
+# omisión y la verificación quedó en rojo sin que nadie tocara el código.
+# Las reglas que se vigilan están en ruff.toml.
+ruff==0.16.7
 aiosqlite>=0.20.0
 matplotlib>=3.9.0
 semgrep>=1.90.0

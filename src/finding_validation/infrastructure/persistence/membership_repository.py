@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....shared.database import ProjectMemberRow, ProjectRow
-from ...domain.entities.membership import Membership, MemberRole
+from ...domain.entities.membership import MemberRole, Membership
 
 
 class SqlMembershipRepository:

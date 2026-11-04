@@ -40,7 +40,7 @@ def hallazgo(linea: int = SUMIDERO) -> Finding:
 
 def contexto(texto: str, saneadores: tuple[str, ...], degradado: bool = False):
     lineas = frozenset(
-        int(l.split(":")[0]) for l in texto.splitlines() if l.split(":")[0].strip().isdigit()
+        int(x.split(":")[0]) for x in texto.splitlines() if x.split(":")[0].strip().isdigit()
     )
     return CodeContext(
         finding_id=hallazgo().id,

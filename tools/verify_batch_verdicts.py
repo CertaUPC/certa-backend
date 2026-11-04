@@ -30,14 +30,14 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
 load_dotenv(RAIZ / ".env")
 
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from src.shared.database import normalize_database_url  # noqa: E402
+from src.shared.database import normalize_database_url
 
 CONSULTA = """
     SELECT i.bucket, i.position, f.id, f.file_path, f.known_truth,
@@ -61,7 +61,7 @@ ALEGA_FALTA = re.compile(
     r"|(no (aparece|est[aá]|se muestra))[^.]{0,60}(cuerpo|implementaci[oó]n)"
     r"|har[ií]a falta el cuerpo|falta.{0,30}(el cuerpo|la implementaci[oó]n)"
     r"|c[oó]digo (ausente|no entregado)",
-    re.I,
+    re.IGNORECASE,
 )
 
 DEF_METODO = re.compile(
@@ -136,7 +136,7 @@ async def main() -> int:
             if m:
                 definidos[m.group(2)] = int(m.group(1))
         citados = set(re.findall(r"\b(\w{4,})\s*\(", just))
-        tenia = {n: l for n, l in definidos.items() if n in citados and l in disp}
+        tenia = {n: v for n, v in definidos.items() if n in citados and v in disp}
         if tenia:
             falsas.append((f, tenia))
 
@@ -146,15 +146,15 @@ async def main() -> int:
         print(f"   [{f['bucket']}{f['position']:>2}] "
               f"{Path(f['file_path']).stem:20} {f['model']:26} "
               f"r{f['repetition']} -> {f['value']}")
-        for n, l in tenia.items():
-            print(f"        {n} estaba definido en la linea {l}")
+        for n, v in tenia.items():
+            print(f"        {n} estaba definido en la linea {v}")
     if not falsas:
         print("   ninguno")
     print()
 
     # 2. Concordancia con la verdad conocida, sobre el veredicto mostrado.
     acierta = yerra = calla = sin_verdad = 0
-    for fid, v in mostrado.items():
+    for _fid, v in mostrado.items():
         if v["known_truth"] is None:
             sin_verdad += 1
             continue
@@ -165,7 +165,7 @@ async def main() -> int:
         else:
             yerra += 1
     con_verdad = len(mostrado) - sin_verdad
-    print(f"2. concordancia con la verdad conocida, sobre lo que se muestra")
+    print("2. concordancia con la verdad conocida, sobre lo que se muestra")
     print(f"   acierta       {acierta:>2} de {con_verdad}")
     print(f"   se equivoca   {yerra:>2} de {con_verdad}")
     print(f"   se abstiene   {calla:>2} de {con_verdad}")
@@ -174,9 +174,9 @@ async def main() -> int:
     print()
 
     # 3. Los equivocados que quedan, por mitad.
-    print(f"3. veredictos equivocados que quedan en el lote")
+    print("3. veredictos equivocados que quedan en el lote")
     reparto: dict[str, int] = {}
-    for fid, v in sorted(mostrado.items(),
+    for _fid, v in sorted(mostrado.items(),
                          key=lambda kv: (kv[1]["bucket"], kv[1]["position"])):
         if v["known_truth"] is None or v["value"] == "indeterminado":
             continue

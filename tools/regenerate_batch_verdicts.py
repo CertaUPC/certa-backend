@@ -42,33 +42,37 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
 load_dotenv(RAIZ / ".env")
 
-from sqlalchemy import delete, select  # noqa: E402
+from sqlalchemy import delete, select
 
-from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (  # noqa: E402
+from src.experimentation.infrastructure.persistence.sql_repositories import (
+    SqlBatchRepository,
+)
+from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (
     ValidateFindingCommandService,
 )
-from src.finding_validation.domain.entities.code_context import CodeContext  # noqa: E402
-from src.finding_validation.domain.entities.finding import Finding  # noqa: E402
-from src.finding_validation.domain.services.budget_guard import BudgetGuard  # noqa: E402
-from src.finding_validation.domain.services.deterministic_prefilter import (  # noqa: E402
+from src.finding_validation.domain.entities.code_context import (
+    CodeContext,
+)
+from src.finding_validation.domain.entities.finding import Finding
+from src.finding_validation.domain.services.budget_guard import (
+    BudgetGuard,
+)
+from src.finding_validation.domain.services.deterministic_prefilter import (
     DeterministicPrefilter,
 )
-from src.finding_validation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlCodeContextRepository,
     SqlFindingRepository,
     SqlVerdictRepository,
 )
-from src.experimentation.infrastructure.persistence.sql_repositories import (  # noqa: E402
-    SqlBatchRepository,
-)
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
-from src.shared.database import VerdictRow  # noqa: E402
-from src.shared.tracing import correlate  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
+from src.shared.database import VerdictRow
+from src.shared.tracing import correlate
 
 SALIDA = RAIZ.parent.parent / "experimento" / "veredictos_prompt_v2"
 

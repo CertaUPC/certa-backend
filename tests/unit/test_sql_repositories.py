@@ -12,6 +12,11 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+# Registra la tabla de cuentas, que executions referencia por clave
+# foránea. Sin esto el archivo pasa dentro de la suite, porque otro
+# módulo la importa, y falla al correrlo solo.
+import src.iam.infrastructure.persistence.models
+import src.shared.database_experiment  # noqa: F401  (registra sus tablas)
 from src.finding_validation.domain.entities.code_context import CodeContext
 from src.finding_validation.domain.entities.execution import Execution, ExecutionStatus
 from src.finding_validation.domain.entities.finding import Finding
@@ -26,12 +31,6 @@ from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlVerdictRepository,
 )
 from src.shared.database import Base, ProjectRow, normalize_database_url
-
-# Registra la tabla de cuentas, que executions referencia por clave
-# foránea. Sin esto el archivo pasa dentro de la suite, porque otro
-# módulo la importa, y falla al correrlo solo.
-import src.iam.infrastructure.persistence.models  # noqa: F401
-import src.shared.database_experiment  # noqa: F401  (registra sus tablas)
 
 PROJECT_ID = uuid4()
 
@@ -392,6 +391,8 @@ class TestParticipanteDePiloto:
 
     @staticmethod
     async def _registrar(session, codigo, piloto):
+        from datetime import datetime, timezone
+
         from src.experimentation.domain.entities.participant import Participant
         from src.experimentation.domain.services.counterbalancer import (
             Counterbalancer,
@@ -400,7 +401,6 @@ class TestParticipanteDePiloto:
             SqlParticipantRepository,
             SqlSessionRepository,
         )
-        from datetime import datetime, timezone
 
         participantes = SqlParticipantRepository(session)
         sesiones = SqlSessionRepository(session)
@@ -420,7 +420,7 @@ class TestParticipanteDePiloto:
             SqlParticipantRepository,
         )
 
-        p, _ = await self._registrar(session, "PIL01", True)
+        _, _ = await self._registrar(session, "PIL01", True)
         vuelto = await SqlParticipantRepository(session).get_by_code("PIL01")
         assert vuelto is not None
         assert vuelto.is_pilot is True

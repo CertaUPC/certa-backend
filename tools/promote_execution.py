@@ -209,7 +209,7 @@ async def run(args) -> int:
             escrito["executions"] = await insert_many(
                 conn,
                 "executions",
-                [c for c in types["executions"] if c in execution.keys()],
+                [c for c in types["executions"] if c in execution],
                 types["executions"],
                 [execution],
                 remap={
@@ -222,7 +222,7 @@ async def run(args) -> int:
                 ("code_contexts", contexts),
                 ("verdicts", verdicts),
             ):
-                usable = [c for c in types[table] if rows and c in rows[0].keys()]
+                usable = [c for c in types[table] if rows and c in rows[0]]
                 escrito[table] = await insert_many(
                     conn, table, usable, types[table], rows
                 )
@@ -257,12 +257,27 @@ async def run(args) -> int:
         print("\nComprobacion contra el despliegue:")
         for consulta, rotulo in (
             ("select count(*) from findings where execution_id = $1", "hallazgos"),
-            ("select count(*) from code_contexts x join findings f on "
-             "f.id = x.finding_id where f.execution_id = $1", "contextos"),
-            ("select count(*) from verdicts v join findings f on "
-             "f.id = v.finding_id where f.execution_id = $1", "veredictos"),
-            ("select count(*) from worklist_items i join worklists w on "
-             "w.id = i.worklist_id where w.execution_id = $1", "lote"),
+            (
+                (
+                    "select count(*) from code_contexts x join findings f on "
+                    "f.id = x.finding_id where f.execution_id = $1"
+                ),
+                "contextos",
+            ),
+            (
+                (
+                    "select count(*) from verdicts v join findings f on "
+                    "f.id = v.finding_id where f.execution_id = $1"
+                ),
+                "veredictos",
+            ),
+            (
+                (
+                    "select count(*) from worklist_items i join worklists w on "
+                    "w.id = i.worklist_id where w.execution_id = $1"
+                ),
+                "lote",
+            ),
         ):
             print(f"  {await conn.fetchval(consulta, args.execution):5d}  {rotulo}")
         return 0

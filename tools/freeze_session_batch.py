@@ -72,21 +72,21 @@ from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from apps.worker.cli import muestra_estratificada  # noqa: E402
-from src.finding_validation.application.internal.commandservices.prepare_session_command_service import (  # noqa: E402
+from apps.worker.cli import muestra_estratificada
+from src.finding_validation.application.internal.commandservices.prepare_session_command_service import (
     PrepareSessionCommandService,
 )
-from src.finding_validation.domain.entities.finding import Finding  # noqa: E402
-from src.finding_validation.domain.value_objects.code_location import (  # noqa: E402
+from src.finding_validation.domain.entities.finding import Finding
+from src.finding_validation.domain.value_objects.code_location import (
     CodeLocation,
 )
-from src.finding_validation.domain.value_objects.fingerprint import (  # noqa: E402
+from src.finding_validation.domain.value_objects.fingerprint import (
     Fingerprint,
 )
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
 
 BATCH_TOTAL = 24
 PER_CONDITION = BATCH_TOTAL // 2

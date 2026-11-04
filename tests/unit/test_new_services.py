@@ -9,6 +9,10 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+# Registra la tabla de cuentas, que executions referencia por clave
+# foránea. Sin esto el archivo pasa dentro de la suite, porque otro
+# módulo la importa, y falla al correrlo solo.
+import src.iam.infrastructure.persistence.models
 import src.shared.database_experiment  # noqa: F401  (registra sus tablas)
 from src.finding_validation.application.internal.commandservices.compare_models_command_service import (
     CompareModelsCommandService,
@@ -57,11 +61,6 @@ from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlVerdictRepository,
 )
 from src.shared.database import Base, FindingRow, ProjectRow
-
-# Registra la tabla de cuentas, que executions referencia por clave
-# foránea. Sin esto el archivo pasa dentro de la suite, porque otro
-# módulo la importa, y falla al correrlo solo.
-import src.iam.infrastructure.persistence.models  # noqa: F401
 from src.shared.tracing import (
     Stage,
     correlate,

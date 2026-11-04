@@ -34,22 +34,26 @@ from uuid import UUID
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (  # noqa: E402
+from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (
     ValidateFindingCommandService,
 )
-from src.finding_validation.domain.entities.code_context import CodeContext  # noqa: E402
-from src.finding_validation.domain.entities.finding import Finding  # noqa: E402
-from src.finding_validation.domain.services.budget_guard import BudgetGuard  # noqa: E402
-from src.finding_validation.domain.services.deterministic_prefilter import (  # noqa: E402
+from src.finding_validation.domain.entities.code_context import (
+    CodeContext,
+)
+from src.finding_validation.domain.entities.finding import Finding
+from src.finding_validation.domain.services.budget_guard import (
+    BudgetGuard,
+)
+from src.finding_validation.domain.services.deterministic_prefilter import (
     DeterministicPrefilter,
 )
-from src.finding_validation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlCodeContextRepository,
     SqlFindingRepository,
 )
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
-from src.shared.tracing import correlate  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
+from src.shared.tracing import correlate
 
 EJECUCION = UUID("75aa891c-4e35-4ca8-84bf-7153fd3a7d48")
 MODELOS = ["anthropic/claude-opus-5", "google/gemini-3.8-flash", "qwen/qwen3.8-27b"]

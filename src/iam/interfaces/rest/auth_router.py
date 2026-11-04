@@ -279,7 +279,8 @@ async def participant_access(
     Lo que evita es el apaño anterior, que el participante entrara en el
     navegador del investigador con la sesión de este abierta.
     """
-    from sqlalchemy import func, select as _select
+    from sqlalchemy import func
+    from sqlalchemy import select as _select
 
     from ....experimentation.domain.entities.participant import normalizar_codigo
     from ....experimentation.infrastructure.persistence.sql_repositories import (

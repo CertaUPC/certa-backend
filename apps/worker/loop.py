@@ -17,6 +17,7 @@ proceso por delante cuando algo falla.
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -147,12 +148,10 @@ def _instalar_senales(bucle: WorkerLoop) -> None:
     for nombre in ("SIGTERM", "SIGINT"):
         senal = getattr(signal, nombre, None)
         if senal is not None:
-            try:
+            # Fuera del hilo principal no se pueden instalar; no es motivo
+            # para no arrancar.
+            with contextlib.suppress(ValueError, OSError):
                 signal.signal(senal, _manejar)
-            except (ValueError, OSError):
-                # Fuera del hilo principal no se pueden instalar; no es motivo
-                # para no arrancar.
-                pass
 
 
 async def main(argv: list[str] | None = None) -> int:

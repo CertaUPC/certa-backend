@@ -25,7 +25,7 @@ from src.experimentation.domain.services.misleading_follow import (
     misleading_cases,
 )
 
-E, N, I = "explotable", "no_explotable", "indeterminado"
+E, N, IND = "explotable", "no_explotable", "indeterminado"
 CONF, DESC, DUDA = "confirmado", "descartado", "dudoso"
 
 
@@ -53,7 +53,7 @@ class TestQueHallazgosCuentan:
 
     def test_la_abstencion_no_es_un_veredicto_equivocado(self):
         """Abstenerse no afirma nada, de modo que no hay nada que seguir."""
-        hallazgos = [{"finding_id": "a", "verdict": I, "known_truth": True}]
+        hallazgos = [{"finding_id": "a", "verdict": IND, "known_truth": True}]
         assert misleading_cases(hallazgos) == []
 
     def test_sin_verdad_conocida_no_se_puede_saber(self):

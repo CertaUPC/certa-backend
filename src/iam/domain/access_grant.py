@@ -44,7 +44,7 @@ class GrantKind(str, Enum):
         return timedelta(days=90) if self is GrantKind.WORKER else timedelta(hours=12)
 
     @classmethod
-    def from_abbreviation(cls, short: str) -> "GrantKind":
+    def from_abbreviation(cls, short: str) -> GrantKind:
         for k in cls:
             if k.abbreviation == short:
                 return k

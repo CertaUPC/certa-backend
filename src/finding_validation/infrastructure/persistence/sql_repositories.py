@@ -11,14 +11,14 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....shared.database import (
-    DecisionRow,
     ContextRow,
+    DecisionRow,
     ExecutionRow,
     FindingRow,
     VerdictRow,
 )
-from ...domain.entities.decision import Decision, DecisionValue
 from ...domain.entities.code_context import CodeContext
+from ...domain.entities.decision import Decision, DecisionValue
 from ...domain.entities.execution import Execution, ExecutionStatus
 from ...domain.entities.finding import Finding
 from ...domain.entities.verdict import Verdict, VerdictValue

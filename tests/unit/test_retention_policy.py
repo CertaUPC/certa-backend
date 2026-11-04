@@ -75,7 +75,7 @@ class TestBarridoPorVentana:
         assert decision.should_purge
 
     @pytest.mark.parametrize("cerrada", [
-        datetime(2026, 8, 1, 12, 0),                      # SQLite, sin zona
+        datetime(2026, 8, 1, 12, 0),  # noqa: DTZ001  SQLite, sin zona: es el caso
         datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc),  # PostgreSQL, con ella
     ])
     def test_le_da_igual_que_la_fecha_traiga_zona_o_no(self, cerrada):

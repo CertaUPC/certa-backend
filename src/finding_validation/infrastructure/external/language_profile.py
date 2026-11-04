@@ -63,8 +63,8 @@ JAVA = LanguageProfile(
         "(method_invocation name: (identifier) @callee)"
         "\n(object_creation_expression type: (type_identifier) @callee)"
     ),
-    sanitizer_hints=COMMON_SANITIZER_HINTS
-    + (
+    sanitizer_hints=(
+        *COMMON_SANITIZER_HINTS,
         "preparestatement", "setstring", "setint", "bind", "parameterize",
         "htmlescape", "htmlencode", "urlencode",
     ),

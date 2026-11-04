@@ -21,7 +21,6 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 
 import src.shared.database_experiment  # noqa: F401  registra sus tablas
-
 from src.experimentation.domain.services.metrics_calculator import MetricsCalculator
 from src.finding_validation.domain.entities.execution import Execution
 from src.finding_validation.domain.entities.verdict import VerdictValue
@@ -40,6 +39,7 @@ from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlFindingRepository,
     SqlVerdictRepository,
 )
+
 # La tabla de cuentas vive en el contexto de acceso y executions la referencia
 # por clave foránea. Sin este import el metadata queda incompleto y crear el
 # esquema en una base nueva falla. No se usa nada de él: se importa para que
@@ -75,7 +75,9 @@ async def _project_id(
             try:
                 pid = UUID(str(proyecto))
             except ValueError:
-                raise SystemExit(f"--proyecto no es un identificador: {proyecto!r}")
+                raise SystemExit(
+                    f"--proyecto no es un identificador: {proyecto!r}"
+                ) from None
             row = (
                 await s.execute(select(ProjectRow).where(ProjectRow.id == str(pid)))
             ).scalar_one_or_none()

@@ -41,28 +41,32 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
 load_dotenv(RAIZ / ".env")
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import text
 
-from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (  # noqa: E402
+from src.finding_validation.application.internal.commandservices.validate_finding_command_service import (
     ValidateFindingCommandService,
 )
-from src.finding_validation.domain.entities.code_context import CodeContext  # noqa: E402
-from src.finding_validation.domain.entities.finding import Finding  # noqa: E402
-from src.finding_validation.domain.services.budget_guard import BudgetGuard  # noqa: E402
-from src.finding_validation.domain.services.deterministic_prefilter import (  # noqa: E402
+from src.finding_validation.domain.entities.code_context import (
+    CodeContext,
+)
+from src.finding_validation.domain.entities.finding import Finding
+from src.finding_validation.domain.services.budget_guard import (
+    BudgetGuard,
+)
+from src.finding_validation.domain.services.deterministic_prefilter import (
     DeterministicPrefilter,
 )
-from src.finding_validation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlCodeContextRepository,
     SqlFindingRepository,
     SqlVerdictRepository,
 )
-from src.shared.composition import Container  # noqa: E402
-from src.shared.config import get_settings  # noqa: E402
+from src.shared.composition import Container
+from src.shared.config import get_settings
 
 MODELO = "anthropic/claude-opus-5"
 SEMILLA = 65  # La misma que declaro el manifiesto del lote.
@@ -216,8 +220,8 @@ async def main() -> int:
                 "anchor_verified": int(v.anchor_verified),
                 "prompt_version": version,
             })
-            print(f"  [{n}/{len(pendientes)}] {caso:20} {str(hallazgo.cwe):9} "
-                  f"verdad={verdad!s:5} v1={str(f['v1']):14} "
+            print(f"  [{n}/{len(pendientes)}] {caso:20} {hallazgo.cwe!s:9} "
+                  f"verdad={verdad!s:5} v1={f['v1']!s:14} "
                   f"v2={v.value.value:14} {clase}")
 
     print(f"\n{len(resultados)} respuestas nuevas")

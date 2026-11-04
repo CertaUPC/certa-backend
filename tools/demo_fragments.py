@@ -269,7 +269,7 @@ def fragmento(
         primera += recorte
 
     texto = "\n".join(
-        f"{primera + i}: {l}" for i, l in enumerate(cuerpo)
+        f"{primera + i}: {linea}" for i, linea in enumerate(cuerpo)
     )
     lineas = list(range(primera, primera + len(cuerpo)))
 

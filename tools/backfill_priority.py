@@ -33,16 +33,16 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from src.finding_validation.domain.services.priority_calculator import (  # noqa: E402
+from src.finding_validation.domain.services.priority_calculator import (
     PriorityCalculator,
 )
-from src.finding_validation.infrastructure.persistence.sql_repositories import (  # noqa: E402
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlFindingRepository,
     SqlVerdictRepository,
 )
-from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401,E402
-from src.shared import database_experiment as _estudio  # noqa: F401,E402
-from src.shared.database import ExecutionRow, FindingRow  # noqa: E402
+from src.iam.infrastructure.persistence import models as _cuentas  # noqa: F401
+from src.shared import database_experiment as _estudio  # noqa: F401
+from src.shared.database import ExecutionRow, FindingRow
 
 
 async def sin_orden(sesion) -> list[tuple[str, int]]:

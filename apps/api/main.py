@@ -1,8 +1,8 @@
 """Arranque del servicio. El cableado vive en `shared/composition.py`."""
 
 import logging
-from uuid import uuid4
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,13 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.experimentation.interfaces.rest.experiment_router import (
     router as experiment_router,
 )
-from src.iam.interfaces.rest.auth_router import router as auth_router
 from src.finding_validation.interfaces.rest.executions_router import (
     router as executions_router,
 )
 from src.finding_validation.interfaces.rest.projects_router import (
     router as projects_router,
 )
+from src.iam.interfaces.rest.auth_router import router as auth_router
 from src.shared.composition import Container
 from src.shared.config import get_settings
 from src.shared.database import Base
@@ -37,7 +37,8 @@ async def sembrar_primer_administrador(container, settings) -> None:
     """
     if not settings.seed_admin_email or not settings.seed_admin_password:
         return
-    from sqlalchemy import func, select as _select
+    from sqlalchemy import func
+    from sqlalchemy import select as _select
 
     from src.iam.infrastructure.persistence.models import UserRow
     from src.iam.infrastructure.security import hash_password
@@ -125,10 +126,10 @@ async def _estado_de_la_base(container: Container) -> str:
             await s.execute(text("SELECT 1"))
             try:
                 await s.execute(text("SELECT 1 FROM users LIMIT 1"))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return "conecta, pero falta el esquema: ejecutar alembic upgrade head"
         return "ok"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"sin conexion: {type(exc).__name__}"
 
 
