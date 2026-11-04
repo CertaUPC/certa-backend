@@ -69,6 +69,12 @@ class FinishSessionRequest(BaseModel):
     a destiempo podria declarar terminado lo que no lo esta.
     """
 
+    confirm: bool = Field(
+        default=False,
+        description="Sellar aunque queden hallazgos sin resolver. Sin esto, "
+        "cerrar una sesion incompleta avisa y no sella.",
+    )
+
     participant_id: UUID
     session_id: UUID
 

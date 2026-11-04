@@ -243,6 +243,17 @@ class SqlSessionRepository:
             for f in filas
         }
 
+    async def esta_sellada(self, session_id: UUID) -> bool:
+        """Si la sesión ya se cerró. Una sellada no admite más decisiones."""
+        return (
+            await self._session.execute(
+                select(SessionRow.finished_at).where(
+                    SessionRow.id == str(session_id),
+                    SessionRow.finished_at.is_not(None),
+                )
+            )
+        ).scalar_one_or_none() is not None
+
     async def close(self, session_id: UUID, complete: bool) -> None:
         """Cierra la sesión marcando si quedó completa.
 

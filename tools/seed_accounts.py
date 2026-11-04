@@ -33,16 +33,21 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from src.iam.infrastructure.persistence.models import UserRow  # noqa: E402
-from src.iam.infrastructure.security import hash_password  # noqa: E402
-from src.shared import database_experiment as _estudio  # noqa: F401,E402
+from src.iam.infrastructure.persistence.models import UserRow
+from src.iam.infrastructure.security import hash_password
+from src.shared import database_experiment as _estudio  # noqa: F401
 
-# Las dos cuentas del video. El correo es el mismo de siempre con un sufijo,
+# Las tres cuentas de prueba. El correo es el mismo de siempre con un sufijo,
 # que el servidor de la universidad entrega igual: no se inventa una identidad
 # para una grabación.
+#
+# La de investigador faltaba y no era un olvido inocuo: registrar y habilitar
+# participantes exige ese rol, de modo que los casos del estudio no se podían
+# ejecutar con ninguna de las dos cuentas documentadas.
 CUENTAS = [
     ("u202211399+lider@upc.edu.pe", "lider_tecnico", "Certa.Lider.2026"),
     ("u202211399+dev@upc.edu.pe", "desarrollador", "Certa.Dev.2026"),
+    ("u202211399+inv@upc.edu.pe", "investigador", "Certa.Inv.2026"),
 ]
 
 

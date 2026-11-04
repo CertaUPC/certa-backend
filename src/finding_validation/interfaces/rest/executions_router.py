@@ -6,9 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
+from ....iam.interfaces.rest.dependencies import UserDep
 from ....shared.database import ExecutionRow, FindingRow, ProjectRow, VerdictRow
+from ....shared.rest import ContainerDep, SessionDep
 from ...domain.entities.decision import Decision, DecisionValue
 from ...domain.entities.execution import Execution, ExecutionStatus
 from ...domain.services.retention_policy import (
@@ -21,8 +23,8 @@ from ...infrastructure.persistence.membership_repository import (
     SqlMembershipRepository,
 )
 from ...infrastructure.persistence.sql_repositories import (
-    SqlDecisionRepository,
     SqlCodeContextRepository,
+    SqlDecisionRepository,
     SqlExecutionRepository,
     SqlFindingRepository,
     SqlVerdictRepository,
@@ -39,8 +41,6 @@ from ..schemas.schemas import (
     StabilityResponse,
     VerdictResponse,
 )
-from ....iam.interfaces.rest.dependencies import UserDep
-from ....shared.rest import ContainerDep, SessionDep
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Ejecuciones"])
 
@@ -109,6 +109,58 @@ async def ingest(
     )
 
 
+async def _ejecucion_mia(session, user, execution_id: UUID) -> Execution:
+    """La ejecución, si quien pregunta pertenece a su proyecto.
+
+    Responde «no existe» y no «no puedes», que es lo mismo que hace el
+    listado: decir que existe pero no es tuya ya revela de quién es el
+    repositorio y cuántas corridas lleva.
+
+    El filtro vivía solo en el listado. Las rutas que reciben el id entraban
+    sin comprobarlo, de modo que conocerlo bastaba para leer la ejecución
+    ajena y sus hallazgos, con archivo, línea, regla y mensaje.
+    """
+    execution = await SqlExecutionRepository(session).get(execution_id)
+    if execution is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    miembros = SqlMembershipRepository(session)
+    visible = (
+        await session.execute(
+            select(ProjectRow.id).where(
+                ProjectRow.id == str(execution.project_id),
+                miembros.visible_para(user.user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if visible is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    return execution
+
+
+async def _hallazgo_mio(session, user, finding_id: UUID):
+    """El hallazgo, si quien pregunta pertenece al proyecto de su ejecución.
+
+    La entidad de dominio no carga el identificador de su ejecución, que es
+    cosa de la persistencia, de modo que el camino hasta el proyecto se hace
+    en la consulta y no en memoria.
+    """
+    miembros = SqlMembershipRepository(session)
+    visible = (
+        await session.execute(
+            select(FindingRow.id)
+            .join(ExecutionRow, ExecutionRow.id == FindingRow.execution_id)
+            .join(ProjectRow, ProjectRow.id == ExecutionRow.project_id)
+            .where(
+                FindingRow.id == str(finding_id),
+                miembros.visible_para(user.user_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if visible is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe ese hallazgo")
+    return await SqlFindingRepository(session).get(finding_id)
+
+
 async def _project_names(session, ids: set[UUID]) -> dict[UUID, str]:
     """Nombres de proyecto en una sola consulta, no una por fila."""
     if not ids:
@@ -154,9 +206,7 @@ async def list_executions(
 async def get_execution(
     execution_id: UUID, session: SessionDep, user: UserDep
 ) -> ExecutionResponse:
-    execution = await SqlExecutionRepository(session).get(execution_id)
-    if execution is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    execution = await _ejecucion_mia(session, user, execution_id)
     nombres = await _project_names(session, {execution.project_id})
     return _to_response(execution, nombres.get(execution.project_id, ""))
 
@@ -180,10 +230,7 @@ async def run(
     """
     user.require("investigador", "lider_tecnico")
 
-    repo = SqlExecutionRepository(session)
-    execution = await repo.get(execution_id)
-    if execution is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    execution = await _ejecucion_mia(session, user, execution_id)
 
     # Encolar dos veces no duplica el trabajo: la ejecución ya pendiente se
     # queda como está, y una en proceso la toma ya un trabajador.
@@ -210,9 +257,7 @@ async def resume(
 ) -> ExecutionResponse:
     """Devuelve a la cola una ejecución interrumpida, conservando lo validado."""
     repo = SqlExecutionRepository(session)
-    execution = await repo.get(execution_id)
-    if execution is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    execution = await _ejecucion_mia(session, user, execution_id)
     try:
         execution.resume()
     except ValueError as exc:
@@ -231,6 +276,7 @@ async def list_findings(
     anchor: bool | None = None,
 ) -> list[FindingResponse]:
     """Lista priorizada. Nunca suprime: filtrar es del usuario, no del sistema."""
+    await _ejecucion_mia(session, user, execution_id)
     rows = (
         await session.execute(
             select(FindingRow)
@@ -305,6 +351,7 @@ async def get_context(
     finding_id: UUID, session: SessionDep, user: UserDep
 ) -> ContextResponse:
     """El contexto exacto que vio el modelo. Es lo que hace auditable el anclaje."""
+    await _hallazgo_mio(session, user, finding_id)
     context = await SqlCodeContextRepository(session).get_by_finding(finding_id)
     if context is None:
         raise HTTPException(
@@ -340,6 +387,7 @@ async def export_decisions(
     consultan por su propio camino.
     """
     user.require("investigador", "lider_tecnico")
+    await _ejecucion_mia(session, user, execution_id)
 
     verdicts = await SqlVerdictRepository(session).list_by_execution(execution_id)
     findings = {
@@ -404,9 +452,7 @@ async def purge_context(
     user.require("investigador", "lider_tecnico")
 
     repo = SqlExecutionRepository(session)
-    execution = await repo.get(execution_id)
-    if execution is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa ejecución")
+    execution = await _ejecucion_mia(session, user, execution_id)
 
     policy = RetentionPolicy(container.settings.retention_days)
     # A petición, no por ventana: esto lo dispara el botón de la pantalla, y
@@ -456,9 +502,7 @@ async def record_audit(
     vigente, de modo que el historial permita distinguir una primera impresión
     de una conclusión.
     """
-    finding = await SqlFindingRepository(session).get(finding_id)
-    if finding is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe ese hallazgo")
+    await _hallazgo_mio(session, user, finding_id)
 
     try:
         audit = Decision(
@@ -488,6 +532,7 @@ async def audit_history(
     finding_id: UUID, session: SessionDep, user: UserDep
 ) -> list[AuditResponse]:
     """El historial, rectificaciones incluidas, de la más reciente a la primera."""
+    await _hallazgo_mio(session, user, finding_id)
     registros = await SqlDecisionRepository(session).list_by_finding(finding_id)
     return [
         AuditResponse(

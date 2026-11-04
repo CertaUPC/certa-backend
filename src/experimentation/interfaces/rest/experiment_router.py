@@ -1,17 +1,16 @@
 """Instrumentación del experimento: participantes, decisiones y métricas."""
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from ....iam.domain.access_grant import GrantKind, mint
-from ....iam.infrastructure.persistence.grant_repository import (
-    SqlAccessGrantRepository,
+from ....finding_validation.domain.entities.decision import Decision
+from ....finding_validation.infrastructure.persistence.sql_repositories import (
+    SqlDecisionRepository,
 )
-from ....iam.interfaces.rest.dependencies import UserDep
-from ....shared.rest import SessionDep
 from ....finding_validation.interfaces.schemas.schemas import (
     DecisionRequest,
     FinishSessionRequest,
@@ -19,11 +18,13 @@ from ....finding_validation.interfaces.schemas.schemas import (
     ParticipantRequest,
     SessionThemeRequest,
 )
-from ....shared.database import DecisionRow, FindingRow, VerdictRow
-from ....finding_validation.domain.entities.decision import Decision
-from ....finding_validation.infrastructure.persistence.sql_repositories import (
-    SqlDecisionRepository,
+from ....iam.domain.access_grant import GrantKind, mint
+from ....iam.infrastructure.persistence.grant_repository import (
+    SqlAccessGrantRepository,
 )
+from ....iam.interfaces.rest.dependencies import UserDep
+from ....shared.database import DecisionRow, FindingRow, VerdictRow
+from ....shared.rest import SessionDep
 from ...domain.entities.participant import Participant, normalizar_codigo
 from ...domain.services.counterbalancer import Counterbalancer
 from ...domain.services.metrics_calculator import MetricsCalculator
@@ -38,6 +39,8 @@ from ...infrastructure.persistence.sql_repositories import (
     SqlParticipantRepository,
     SqlSessionRepository,
 )
+
+logger = logging.getLogger("certa.experimento")
 
 router = APIRouter(prefix="/api/v1/experiment", tags=["Experimento"])
 
@@ -280,6 +283,21 @@ async def record_decision(
     """
     user.require_study_access(body.participant_id)
 
+    # Una sesion sellada no admite mas decisiones. Sin esto, lo medido se
+    # podia alterar despues de cerrarla, que es justo lo que el sellado
+    # existe para impedir: la decision tardia entraba y quedaba vigente.
+    if body.session_id and await SqlSessionRepository(session).esta_sellada(
+        body.session_id
+    ):
+        logger.warning(
+            "decision sobre sesion sellada: participante %s, sesion %s",
+            body.participant_id, body.session_id,
+        )
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Esa sesión ya se cerró y no admite más decisiones.",
+        )
+
     # El lote no se le pide al cliente: es unico y el servidor lo sabe.
     # Pedirselo seria darle ocasion de equivocarse en un dato que no es
     # suyo, y sin el no se puede decir contra que lote se midio.
@@ -339,6 +357,19 @@ async def finish_session(
     }
 
     completa = bool(esperados) and esperados <= decididos
+
+    # Una sesion incompleta no se sella sin que alguien lo diga. Antes se
+    # sellaba igual, de modo que un cierre a destiempo dejaba la sesion
+    # cerrada y sin aviso, y lo que faltaba por responder ya no se podia
+    # responder. Ahora el cierre avisa y pide confirmarlo.
+    if not completa and not body.confirm:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Quedan {len(esperados - decididos)} de {len(esperados)} "
+            "hallazgos sin resolver. Para sellarla de todos modos, repite el "
+            "cierre con confirm en verdadero.",
+        )
+
     await SqlSessionRepository(session).close(body.session_id, completa)
     return {
         "session_id": str(body.session_id),

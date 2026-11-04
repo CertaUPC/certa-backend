@@ -14,17 +14,17 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import src.shared.database_experiment  # noqa: F401  registra las tablas
+from apps.api.main import app
 from src.finding_validation.infrastructure.external.code_reader_registry import (
     CodeReaderRegistry,
-)
-from src.finding_validation.infrastructure.persistence.sql_repositories import (
-    SqlExecutionRepository,
 )
 from src.finding_validation.infrastructure.external.scripted_language_model import (
     ScriptedLanguageModel,
     exploitable,
 )
-from apps.api.main import app
+from src.finding_validation.infrastructure.persistence.sql_repositories import (
+    SqlExecutionRepository,
+)
 from src.shared.composition import Container
 from src.shared.config import Settings
 from src.shared.database import Base, ProjectRow
@@ -350,8 +350,8 @@ class TestIngest:
         from sqlalchemy import select
 
         from apps.api.main import app
-        from src.shared.database import ExecutionRow
         from src.iam.infrastructure.persistence.models import UserRow
+        from src.shared.database import ExecutionRow
 
         token = await _token(client)
         r = await client.post(
@@ -1354,6 +1354,99 @@ class TestNadieVeLoAjeno:
         assert not ajenas
 
 
+class TestConocerElIdNoDaAcceso:
+    """Lo que el grupo evaluador encontró en el ciclo 1.
+
+    El filtro de pertenencia vivía solo en los listados. Las rutas que reciben
+    el identificador entraban sin comprobarlo, de modo que conocerlo bastaba
+    para leer la ejecución ajena con sus hallazgos (archivo, línea, regla y
+    mensaje) y hasta para decidir sobre ellos, quedando esa decisión como la
+    vigente del proyecto de otro.
+    """
+
+    async def _proyecto_privado(self, client, token, nombre):
+        """Uno con dueño. El de la fixture es conjunto público y lo ve todo
+        el mundo a propósito, así que no sirve para medir aislamiento."""
+        r = await client.post(
+            "/api/v1/projects",
+            json={"name": nombre, "is_public_dataset": False},
+            headers=_auth(token),
+        )
+        assert r.status_code in (200, 201), r.text
+        return r.json()["id"]
+
+    async def _ejecucion_de_otro(self, client):
+        """Una ejecución de una cuenta, y el token de otra que no la comparte."""
+        dueno = await _token(client, "investigador")
+        proyecto = await self._proyecto_privado(client, dueno, "Solo mío")
+        creada = await client.post(
+            "/api/v1/executions",
+            json={"project_id": proyecto, "sarif": sarif_doc()},
+            headers=_auth(dueno),
+        )
+        assert creada.status_code == 201, creada.text
+        ejecucion = creada.json()["execution"]["id"]
+        hallazgos = await client.get(
+            f"/api/v1/executions/{ejecucion}/findings", headers=_auth(dueno)
+        )
+        assert hallazgos.status_code == 200, hallazgos.text
+        ajeno = await _token(client, "lider_tecnico")
+        return ejecucion, hallazgos.json()[0]["id"], ajeno
+
+    async def test_el_detalle_de_una_ejecucion_ajena_no_existe(self, client):
+        ejecucion, _, ajeno = await self._ejecucion_de_otro(client)
+        r = await client.get(
+            f"/api/v1/executions/{ejecucion}", headers=_auth(ajeno)
+        )
+        assert r.status_code == 404
+
+    async def test_los_hallazgos_de_una_ejecucion_ajena_tampoco(self, client):
+        ejecucion, _, ajeno = await self._ejecucion_de_otro(client)
+        r = await client.get(
+            f"/api/v1/executions/{ejecucion}/findings", headers=_auth(ajeno)
+        )
+        assert r.status_code == 404
+
+    async def test_no_se_decide_sobre_un_hallazgo_ajeno(self, client):
+        """El peor de los dos: no solo leía, escribía."""
+        _, hallazgo, ajeno = await self._ejecucion_de_otro(client)
+        r = await client.post(
+            f"/api/v1/executions/findings/{hallazgo}/audit",
+            json={"value": "confirmado", "seconds": 12.5},
+            headers=_auth(ajeno),
+        )
+        assert r.status_code == 404
+
+    async def test_ni_se_lee_su_historial(self, client):
+        _, hallazgo, ajeno = await self._ejecucion_de_otro(client)
+        r = await client.get(
+            f"/api/v1/executions/findings/{hallazgo}/audits", headers=_auth(ajeno)
+        )
+        assert r.status_code == 404
+
+    async def test_ni_se_exporta_su_registro(self, client):
+        ejecucion, _, ajeno = await self._ejecucion_de_otro(client)
+        r = await client.get(
+            f"/api/v1/executions/{ejecucion}/export", headers=_auth(ajeno)
+        )
+        assert r.status_code == 404
+
+    async def test_el_dueno_sigue_entrando(self, client):
+        """La comprobación no puede cerrarle la puerta a quien sí pertenece."""
+        dueno = await _token(client, "investigador")
+        proyecto = await self._proyecto_privado(client, dueno, "El mío de verdad")
+        creada = await client.post(
+            "/api/v1/executions",
+            json={"project_id": proyecto, "sarif": sarif_doc()},
+            headers=_auth(dueno),
+        )
+        ejecucion = creada.json()["execution"]["id"]
+        r = await client.get(
+            f"/api/v1/executions/{ejecucion}", headers=_auth(dueno)
+        )
+        assert r.status_code == 200
+
+
 class TestLaFichaDecideLaParticipacion:
     """La ficha del anexo B, recogida por la herramienta.
 
@@ -1963,6 +2056,44 @@ class TestLaSesionDelParticipante:
         )
         assert ajena.status_code == 403
 
+    async def test_una_sesion_sellada_no_admite_mas_decisiones(self, client):
+        """Lo que el grupo evaluador encontró: el sellado no sellaba.
+
+        Cerrar la sesión marcaba la fecha y nada más. Una decisión que llegaba
+        después entraba igual y quedaba como la vigente, de modo que lo medido
+        se podía alterar cuando ya se había declarado terminado.
+        """
+        _, finding_id, alta, suyo = await self._estudio(client)
+        cabeceras = _auth(suyo["access_token"])
+        cuerpo = {
+            "finding_id": finding_id,
+            "participant_id": alta["participant_id"],
+            "session_id": suyo["session_id"],
+            "value": "confirmado",
+            "seconds": 12.5,
+            "condition": "con_asistente",
+        }
+
+        antes = await client.post(
+            "/api/v1/experiment/decisions", json=cuerpo, headers=cabeceras
+        )
+        assert antes.status_code == 201, antes.text
+
+        cierre = await client.post(
+            "/api/v1/experiment/sessions/finish",
+            json={"participant_id": alta["participant_id"],
+                  "session_id": suyo["session_id"]},
+            headers=cabeceras,
+        )
+        assert cierre.status_code == 200, cierre.text
+
+        tarde = await client.post(
+            "/api/v1/experiment/decisions",
+            json={**cuerpo, "value": "descartado"},
+            headers=cabeceras,
+        )
+        assert tarde.status_code == 409, tarde.text
+
     async def test_anota_su_presentacion_y_no_la_de_otro(self, client):
         _, _, alta, suyo = await self._estudio(client)
         cabeceras = _auth(suyo["access_token"])
@@ -2131,6 +2262,7 @@ class TestLaSesionQuedaSellada:
         ).status_code == 201
 
         from sqlalchemy import select as _sel
+
         from src.shared.database import DecisionRow
 
         async with app.state.container.sessions() as s:
@@ -2155,21 +2287,42 @@ class TestLaSesionQuedaSellada:
             "session_id": alta["session_id"],
         }
 
-        # Sin decidir nada, la sesión se cierra pero no queda completa.
+        # Sin decidir nada, el cierre avisa y no sella.
         r = await client.post(
             "/api/v1/experiment/sessions/finish", json=cierre, headers=_auth(token)
         )
-        assert r.status_code == 200
-        assert r.json()["is_complete"] is False
-        assert r.json()["decided"] == 0 and r.json()["expected"] == 1
+        assert r.status_code == 409, r.text
+        assert "sin resolver" in r.json()["detail"]
 
-        # Recorrido el lote, sí.
+        # Recorrido el lote, se cierra y queda completa.
         await self._decidir(client, token, hallazgos[0], alta, "con_asistente")
         r = await client.post(
             "/api/v1/experiment/sessions/finish", json=cierre, headers=_auth(token)
         )
+        assert r.status_code == 200, r.text
         assert r.json()["is_complete"] is True
         assert r.json()["decided"] == 1
+
+    async def test_una_incompleta_se_sella_si_se_confirma(self, client):
+        """Abandonar a la mitad es un dato, no un error: se sella y se marca.
+
+        Lo que no puede es sellarse sola, porque entonces un cierre a
+        destiempo dejaba fuera lo que aún faltaba por responder.
+        """
+        token = await _token(client)
+        _, alta = await self._preparar(client, token, "P81")
+        r = await client.post(
+            "/api/v1/experiment/sessions/finish",
+            json={
+                "participant_id": alta["participant_id"],
+                "session_id": alta["session_id"],
+                "confirm": True,
+            },
+            headers=_auth(token),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["is_complete"] is False
+        assert r.json()["decided"] == 0 and r.json()["expected"] == 1
 
 
 class TestVolverAEntrarEmpiezaDeCero:
@@ -2196,6 +2349,7 @@ class TestVolverAEntrarEmpiezaDeCero:
         from datetime import datetime, timedelta, timezone
 
         from sqlalchemy import update as _upd
+
         from src.shared.database import DecisionRow
 
         async with app.state.container.sessions() as s:
@@ -2224,7 +2378,9 @@ class TestVolverAEntrarEmpiezaDeCero:
         assert vuelta.status_code == 200
         assert vuelta.json()["discarded_decisions"] == 0
 
-        from sqlalchemy import func, select as _sel
+        from sqlalchemy import func
+        from sqlalchemy import select as _sel
+
         from src.shared.database import DecisionRow
 
         async with app.state.container.sessions() as s:
@@ -2264,7 +2420,9 @@ class TestVolverAEntrarEmpiezaDeCero:
         # decision siga siendo valido.
         assert vuelta.json()["session_id"] == alta["session_id"]
 
-        from sqlalchemy import func, select as _sel
+        from sqlalchemy import func
+        from sqlalchemy import select as _sel
+
         from src.shared.database import DecisionRow
         from src.shared.database_experiment import SessionRow
 
@@ -2314,7 +2472,9 @@ class TestVolverAEntrarEmpiezaDeCero:
         await sellada._decidir(client, token, hallazgos[0], alta, "con_asistente")
         await self._envejecer(alta["participant_id"], 7)
 
-        from sqlalchemy import func, select as _sel
+        from sqlalchemy import func
+        from sqlalchemy import select as _sel
+
         from src.shared.database import FindingRow, VerdictRow
 
         async def cuantos():
