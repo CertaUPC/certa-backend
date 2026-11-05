@@ -188,6 +188,58 @@ def _validator(env, model, budget):
     )
 
 
+class TestLaReutilizacionSobreviveAlProceso:
+    """Lo que el grupo evaluador encontró al correrlo en su máquina.
+
+    El diccionario de veredictos vivía solo en memoria del proceso, de modo
+    que una segunda corrida del mismo repositorio volvía a preguntarle al
+    modelo por cada hallazgo que ya tenía veredicto. Se pagaba dos veces el
+    mismo juicio, que es justo lo que la reutilización existe para evitar.
+    """
+
+    async def test_una_segunda_corrida_no_vuelve_a_preguntar(self, env):
+        from src.finding_validation.infrastructure.persistence.sql_repositories import (
+            SqlVerdictRepository,
+        )
+
+        sesion = env["session"]
+        hallazgo = env["findings"][0]
+        verdicts = SqlVerdictRepository(sesion)
+
+        # Primera corrida: el modelo contesta una vez y el veredicto se guarda.
+        modelo = ScriptedLanguageModel(deque([exploitable([4])]))
+        primera = ValidateFindingCommandService(
+            code_reader=CodeReaderRegistry(env["root"]),
+            language_model=modelo,
+            anchor_verifier=AnchorVerifier(),
+            prefilter=DeterministicPrefilter(),
+            budget=BudgetGuard(100),
+            prompt_version=PromptVersion.of("v1", "Juzga...", OUTPUT_CONTRACT_V1),
+            verdict_cache={},
+            verdict_repository=verdicts,
+        )
+        salida = await primera.execute(hallazgo)
+        assert salida.verdict is not None
+        await verdicts.save(salida.verdict)
+
+        # Segunda corrida, proceso nuevo: diccionario vacío y un modelo sin
+        # respuestas. Si preguntara, se quedaría sin guion y fallaría.
+        segunda = ValidateFindingCommandService(
+            code_reader=CodeReaderRegistry(env["root"]),
+            language_model=ScriptedLanguageModel(deque()),
+            anchor_verifier=AnchorVerifier(),
+            prefilter=DeterministicPrefilter(),
+            budget=BudgetGuard(100),
+            prompt_version=PromptVersion.of("v1", "Juzga...", OUTPUT_CONTRACT_V1),
+            verdict_cache={},
+            verdict_repository=verdicts,
+        )
+        otra = await segunda.execute(hallazgo)
+        assert otra.verdict is not None
+        assert otra.verdict.reused_from is not None
+        assert any("euti" in t for t in otra.trace)
+
+
 class TestPrepareSession:
     async def test_precomputes_every_finding(self, env):
         model = ScriptedLanguageModel(deque([exploitable([4, 5]) for _ in range(10)]))

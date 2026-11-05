@@ -184,6 +184,9 @@ class Container:
             prefilter=self.prefilter,
             budget=budget,
             prompt_version=self.prompt_version,
+            # Para que la reutilización por huella sobreviva al proceso: sin
+            # esto solo valía dentro de una misma corrida.
+            verdict_repository=SqlVerdictRepository(session),
         )
 
     def runner(

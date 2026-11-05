@@ -481,10 +481,40 @@ async def cmd_check(args: argparse.Namespace) -> int:
             return 0
         ultima = executions[0]
 
+        # Sin modelo no se valida nada, y antes eso salia con codigo 0 y el
+        # mensaje «0 hallazgos superan el umbral»: la entrega pasaba sin que
+        # nadie hubiera mirado un solo hallazgo. Una puerta que se abre cuando
+        # no puede comprobar nada no es una puerta.
+        if not settings.llm_configured:
+            print(
+                "ERROR: no hay proveedor de modelo configurado (LLM_BASE_URL, "
+                "LLM_API_KEY y LLM_MODEL). Sin el no se valida nada, de modo "
+                "que esta comprobacion no puede decir si la entrega esta "
+                "limpia.",
+                file=sys.stderr,
+            )
+            await container.dispose()
+            return 2
+
         budget = container.new_budget()
-        if settings.llm_configured:
-            with correlate():
-                await container.runner(s, budget).run(ultima, worker="cli")
+        with correlate():
+            await container.runner(s, budget).run(ultima, worker="cli")
+
+        # Y si quedo a medias, tampoco. Un lote interrumpido por presupuesto o
+        # porque falto el codigo deja hallazgos sin veredicto: contarlos como
+        # «ninguno supera el umbral» es dar por limpio lo que no se miro.
+        ultima = await SqlExecutionRepository(s).get(ultima.id) or ultima
+        if ultima.pending_findings:
+            print(
+                f"ERROR: la validacion quedo a medias, con "
+                f"{ultima.pending_findings} de {ultima.total_findings} "
+                f"hallazgos sin veredicto"
+                + (f": {ultima.failure_reason}" if ultima.failure_reason else "")
+                + ". La entrega no se puede dar por limpia.",
+                file=sys.stderr,
+            )
+            await container.dispose()
+            return 2
 
         verdicts = await SqlVerdictRepository(s).list_by_execution(ultima.id)
 

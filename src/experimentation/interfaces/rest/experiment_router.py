@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ....finding_validation.domain.entities.decision import Decision
 from ....finding_validation.infrastructure.persistence.sql_repositories import (
@@ -455,9 +455,40 @@ async def metrics(
         if e["finding_id"] in decididos
     ]
 
+    # Cobertura y abstenciones, que la historia pide y no salían. Pendientes
+    # son los hallazgos de la ejecución que todavía no tienen veredicto: sin
+    # ellos, la cobertura se leía como si fuera siempre del total.
+    total_hallazgos = (
+        await session.execute(
+            select(func.count(FindingRow.id)).where(
+                FindingRow.execution_id == str(execution_id)
+            )
+        )
+    ).scalar_one()
+    pendientes = max(0, total_hallazgos - len({v.finding_id for v, _ in rows}))
+    abstenciones = sum(
+        1 for v, _ in rows if v.value in ("indeterminado", "no_verificable")
+    )
+    por_cwe: dict[str, int] = {}
+    for _, f in rows:
+        por_cwe[f.cwe or "sin categoría"] = por_cwe.get(f.cwe or "sin categoría", 0) + 1
+    reutilizados = sum(1 for v, _ in rows if v.reused_from is not None)
+
     return MetricsResponse(
         execution_id=execution_id,
         total_verdicts=len(rows),
+        coverage=round(
+            len(rows) / total_hallazgos if total_hallazgos else 0.0, 4
+        ),
+        pending_findings=pendientes,
+        abstentions=abstenciones,
+        by_cwe=dict(sorted(por_cwe.items())),
+        # Las consultas que costaron dinero son las que no se reutilizaron.
+        queries_used=sum(v.attempts or 1 for v, _ in rows if v.reused_from is None),
+        queries_reused=reutilizados,
+        # Sobre una ejecución a medias las cifras son parciales, y decirlo es
+        # parte del resultado: el criterio lo pide con esas palabras.
+        is_partial=pendientes > 0,
         misleading_verdicts=len(enganosos),
         misleading_follow_rate=(
             None if follow_rate(casos) is None else round(follow_rate(casos), 4)
@@ -466,5 +497,8 @@ async def metrics(
         anchor_rate_first_try=round(calculator.anchor_rate(anclados, len(rows)), 4),
         run_is_valid=quality.is_valid,
         run_quality_reason=quality.reason,
-        budget="(el consumo se informa al ejecutar)",
+        budget=(
+            f"{sum(v.attempts or 1 for v, _ in rows if v.reused_from is None)} "
+            f"consultas empleadas, {reutilizados} reutilizadas sin costo"
+        ),
     )

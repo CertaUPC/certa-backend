@@ -9,7 +9,6 @@ Lo que se comprueba aquí es el bucle, no la cadena. La cadena tiene sus propias
 pruebas.
 """
 
-import asyncio
 
 from apps.worker.loop import WorkerLoop
 
@@ -88,14 +87,28 @@ class TestCuandoFalla:
 
 class TestCuandoSePideQuePare:
     async def test_para_al_pedirselo(self):
+        """Se le pide parar desde dentro, no a los diez milisegundos.
+
+        Antes la parada se programaba con un sleep(0.01) y se daba por hecho
+        que para entonces quedarían trabajos por hacer. En Windows la cola de
+        cien se despachaba antes de que venciera esa espera, de modo que la
+        prueba fallaba por el reloj de la plataforma y no por el código.
+        """
         cola = ColaFalsa(["a"] * 100)
         b = bucle(cola)
 
-        async def parar():
-            await asyncio.sleep(0.01)
-            b.stop()
+        # El quinto trabajo pide parar. Ya no depende de cuánto tarde nada.
+        original = cola.claim_and_run
 
-        await asyncio.gather(b.run(), parar())
+        async def tomar(*args, **kwargs):
+            resultado = await original(*args, **kwargs)
+            if len(cola.procesados) == 5:
+                b.stop()
+            return resultado
+
+        cola.claim_and_run = tomar
+
+        await b.run()
         assert b.stopping
         assert len(cola.procesados) < 100
 

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from ....domain.entities.code_context import CodeContext
 from ....domain.entities.finding import Finding
 from ....domain.entities.verdict import Verdict, VerdictValue
+from ....domain.repositories.repositories import VerdictRepository
 from ....domain.services.anchor_verifier import AnchorVerifier
 from ....domain.services.budget_guard import BudgetExhausted, BudgetGuard
 from ....domain.services.code_reader_port import CodeReaderPort
@@ -55,6 +56,7 @@ class ValidateFindingCommandService:
         budget: BudgetGuard,
         prompt_version: PromptVersion,
         verdict_cache: dict[str, Verdict] | None = None,
+        verdict_repository: VerdictRepository | None = None,
     ) -> None:
         self._reader = code_reader
         self._model = language_model
@@ -64,7 +66,14 @@ class ValidateFindingCommandService:
         self._prompt_version = prompt_version
         # Clave: huella + modelo + versión. Reutilizar exige que las tres
         # coincidan: un veredicto de otro modelo no responde por este.
-        self._cache: dict[str, Verdict] = verdict_cache if verdict_cache is not None else {}
+        self._cache: dict[str, Verdict] = (
+            verdict_cache if verdict_cache is not None else {}
+        )
+        # El diccionario solo vive en este proceso. Sin la base detrás, una
+        # segunda corrida del mismo repositorio volvía a consultar al modelo
+        # por cada hallazgo que ya tenía veredicto, y se pagaba dos veces el
+        # mismo juicio: justo lo que la reutilización existe para evitar.
+        self._verdicts = verdict_repository
 
     def _cache_key(self, finding: Finding) -> str:
         return (
@@ -78,7 +87,16 @@ class ValidateFindingCommandService:
         outcome = ValidationOutcome(finding=finding, context=None, verdict=None)
 
         # --- Nivel 1 de la cascada: reutilización por huella ---------------
-        cached = self._cache.get(self._cache_key(finding))
+        clave = self._cache_key(finding)
+        cached = self._cache.get(clave)
+        if cached is None and self._verdicts is not None:
+            cached = await self._verdicts.find_reusable(
+                finding.fingerprint,
+                self._model.model_name,
+                self._model.model_version,
+            )
+            if cached is not None:
+                self._cache[clave] = cached
         if cached is not None:
             self._budget.record_reuse()
             outcome.trace.append(

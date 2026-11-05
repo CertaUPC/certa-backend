@@ -61,10 +61,21 @@ NOW = datetime(2026, 9, 10, tzinfo=timezone.utc)
 
 print("\nPARTICIPANTES")
 p = Participant(anonymous_code="P01", experience_band="de_1_a_3", consented_at=NOW)
-check("acepta un participante válido", p.anonymous_code == "P01")
-check("estratifica por experiencia", p.experience_band == "intermedio")
-check("un año es inicial", Participant("P02", 1, NOW).experience_band == "inicial")
-check("seis años es senior", Participant("P03", 6, NOW).experience_band == "senior")
+# El código se normaliza al construir: «P01», «p 1» y «P-1» son el mismo.
+check("normaliza el código del participante", p.anonymous_code == "P-01")
+# La banda ya no se deriva de un número de años ni se renombra: se declara,
+# y son las cuatro del anexo B. Estas comprobaciones seguían pidiendo
+# «intermedio» a partir de un «1», que es el contrato de hace dos versiones.
+check("conserva la banda declarada", p.experience_band == "de_1_a_3")
+check("admite la banda más baja",
+      Participant("P02", "menos_de_1", NOW).experience_band == "menos_de_1")
+check("admite la más alta",
+      Participant("P03", "mas_de_7", NOW).experience_band == "mas_de_7")
+raises(
+    "rechaza una banda que no existe",
+    ValueError,
+    lambda: Participant("P04", "intermedio", NOW),
+)
 raises(
     "excluye a quien tiene rol de seguridad",
     ValueError,
@@ -75,12 +86,15 @@ raises("rechaza experiencia negativa", ValueError, lambda: Participant("P05", -1
 
 print("\nDECISIONES")
 fid, pid = uuid4(), p.id
-d_ok = Decision(fid, pid, DecisionValue.CONFIRMED, 42.5, Condition.WITH_ASSISTANT)
+d_ok = Decision(finding_id=fid, participant_id=pid, value=DecisionValue.CONFIRMED,
+                      seconds=42.5, condition=Condition.WITH_ASSISTANT.value)
 check("acierta al confirmar un verdadero positivo", d_ok.is_correct_against(True) is True)
 check("falla al confirmar un falso positivo", d_ok.is_correct_against(False) is False)
-d_desc = Decision(fid, pid, DecisionValue.DISMISSED, 20.0, Condition.CONTROL)
+d_desc = Decision(finding_id=fid, participant_id=pid, value=DecisionValue.DISMISSED,
+                      seconds=20.0, condition=Condition.CONTROL.value)
 check("acierta al descartar un falso positivo", d_desc.is_correct_against(False) is True)
-d_dud = Decision(fid, pid, DecisionValue.DOUBTFUL, 30.0, Condition.CONTROL)
+d_dud = Decision(finding_id=fid, participant_id=pid, value=DecisionValue.DOUBTFUL,
+                      seconds=30.0, condition=Condition.CONTROL.value)
 check("dudoso no cuenta como acierto ni error", d_dud.is_correct_against(True) is None)
 check("sin verdad conocida no hay acierto", d_ok.is_correct_against(None) is None)
 check("la decisión nace vigente", d_ok.is_current)
@@ -89,7 +103,8 @@ check("la rectificación se conserva, no se borra", not d_ok.is_current)
 raises(
     "rechaza tiempo no positivo",
     ValueError,
-    lambda: Decision(fid, pid, DecisionValue.CONFIRMED, 0.0, Condition.CONTROL),
+    lambda: Decision(finding_id=fid, participant_id=pid, value=DecisionValue.CONFIRMED,
+                      seconds=0.0, condition=Condition.CONTROL.value),
 )
 
 print("\nCONDICIONES")
@@ -138,7 +153,10 @@ degenerada = ["explotable"] * 95 + ["no_explotable"] * 5
 q = m.assess_run(degenerada)
 check("rechaza la corrida degenerada", not q.is_valid)
 check("nombra la clase dominante", q.dominant_label == "explotable")
-check("el motivo cita el umbral", "90%" in q.reason)
+# El motivo dejó de citar el umbral en por ciento y pasó a decirlo en
+# castellano llano, «95 de cada 100». Lo que importa comprobar es que diga la
+# proporción, no la forma en que la escribe.
+check("el motivo dice la proporción", "95 de cada 100" in q.reason)
 sana = ["explotable"] * 60 + ["no_explotable"] * 40
 check("acepta una distribución admisible", m.assess_run(sana).is_valid)
 check("una corrida vacía no es válida", not m.assess_run([]).is_valid)

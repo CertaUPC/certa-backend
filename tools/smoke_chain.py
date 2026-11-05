@@ -261,7 +261,11 @@ async def run_chain():
         d_ins = prefilter.decide(inseguro, ctx)
         check("sin saneador escala al modelo", d_ins.spends_budget)
         d_seg = prefilter.decide(seguro, ctx_safe)
-        check("con saneador previo resuelve por regla", not d_seg.spends_budget)
+        # El filtro señala, no decide. Lo contrario era el diseño viejo: una
+        # regla que cerraba el hallazgo sin consultar, y por eso esta
+        # comprobación llevaba meses fallando contra el contrato actual.
+        check("con saneador previo deja una señal", d_seg.has_sanitizer_signal)
+        check("y aun así escala al modelo", d_seg.spends_budget)
 
         # --- anclaje verificado a la primera --------------------------------
         budget = BudgetGuard(max_queries=10, usd_per_1k_input=0.003, usd_per_1k_output=0.015)
@@ -282,11 +286,21 @@ async def run_chain():
         check("la reutilización no gasta consulta", budget.spent_queries == 1)
         check("la reutilización se contabiliza", budget.reused_queries == 1)
 
-        # --- resuelto por regla, sin consultar -------------------------------
+        # --- el saneador es señal, no sentencia ------------------------------
+        # Antes esto comprobaba que una regla cerrara el hallazgo sin
+        # consultar. El diseño cambió: ninguna regla decide sola, porque un
+        # saneador reconocido puede estar en una rama que el dato no toma. La
+        # comprobación se quedó con el contrato viejo y llevaba meses rota.
+        # La línea citada se toma del propio fragmento: inventarla haría que
+        # el verificador de anclaje la rechazara y el guion se agotara.
+        linea_segura = min(ctx_safe.available_lines)
+        modelo.script.append(not_exploitable([linea_segura]))
         r_seg = await servicio.execute(seguro)
-        check("resuelve por regla sin consultar", r_seg.verdict.model == "regla-determinista")
-        check("la regla no gasta consulta", budget.spent_queries == 1)
-        check("cuenta la resolución por regla", budget.resolved_by_rule == 1)
+        check("el saneado también recibe veredicto", r_seg.succeeded)
+        check("y vino del modelo, no de una regla",
+              r_seg.verdict.model != "regla-determinista")
+        check("la señal del saneador consta en la traza",
+              any("anead" in t for t in r_seg.trace))
 
         # --- alucinación y reintento dirigido --------------------------------
         budget2 = BudgetGuard(max_queries=10)

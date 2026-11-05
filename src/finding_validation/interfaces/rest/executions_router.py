@@ -9,13 +9,20 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from ....iam.interfaces.rest.dependencies import UserDep
-from ....shared.database import ExecutionRow, FindingRow, ProjectRow, VerdictRow
+from ....shared.database import (
+    DecisionRow,
+    ExecutionRow,
+    FindingRow,
+    ProjectRow,
+    VerdictRow,
+)
 from ....shared.rest import ContainerDep, SessionDep
 from ...application.internal.commandservices.ingest_execution_command_service import (
     EmptyScope,
 )
 from ...domain.entities.decision import Decision, DecisionValue
 from ...domain.entities.execution import Execution, ExecutionStatus
+from ...domain.entities.verdict import VerdictValue
 from ...domain.services.retention_policy import (
     ExecutionRetentionState,
     RetentionPolicy,
@@ -46,6 +53,30 @@ from ..schemas.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/executions", tags=["Ejecuciones"])
+
+
+def _equivalente(veredicto: VerdictValue) -> str:
+    """Lo que la decisión humana diría si coincidiera con el asistente."""
+    return {
+        VerdictValue.EXPLOITABLE: "confirmado",
+        VerdictValue.NOT_EXPLOITABLE: "descartado",
+    }.get(veredicto, "dudoso")
+
+
+async def _decisiones_vigentes(session, execution_id: UUID) -> dict:
+    """La decisión vigente de cada hallazgo de la ejecución."""
+    filas = (
+        await session.execute(
+            select(DecisionRow)
+            .join(FindingRow, FindingRow.id == DecisionRow.finding_id)
+            .where(
+                FindingRow.execution_id == str(execution_id),
+                DecisionRow.is_current.is_(True),
+            )
+        )
+    ).scalars().all()
+    repo = SqlDecisionRepository(session)
+    return {UUID(f.finding_id): repo._to_entity(f) for f in filas}
 
 
 def _describe_scope(scope: ScopeFilter) -> str:
@@ -416,6 +447,7 @@ async def export_decisions(
     await _ejecucion_mia(session, user, execution_id)
 
     verdicts = await SqlVerdictRepository(session).list_by_execution(execution_id)
+    decisiones = await _decisiones_vigentes(session, execution_id)
     findings = {
         f.id: f for f in await SqlFindingRepository(session).list_by_execution(execution_id)
     }
@@ -433,10 +465,16 @@ async def export_decisions(
             "fingerprint", "known_truth", "model", "model_version", "repetition",
             "veredicto", "confidence", "anchor_verified", "attempts",
             "cited_lines", "reutilizado", "latency_ms",
+            # Lo que el criterio pedía y no salía: por qué el asistente dijo
+            # lo que dijo, qué decidió la persona y quién fue. Sin estas tres,
+            # el archivo cuenta lo que hizo la cadena y no la revisión.
+            "justificacion", "decision_humana", "decidido_por", "decidido_en",
+            "discrepancia",
         ]
     )
     for v in verdicts:
         f = findings.get(v.finding_id)
+        d = decisiones.get(v.finding_id)
         writer.writerow(
             [
                 str(v.finding_id),
@@ -457,6 +495,13 @@ async def export_decisions(
                 " ".join(str(n) for n in sorted(v.justification.cited_lines)),
                 int(v.was_reused),
                 v.latency_ms or "",
+                v.justification.text if v.justification else "",
+                d.value.value if d else "",
+                str(d.user_id) if d and d.user_id else "",
+                d.created_at.isoformat() if d and d.created_at else "",
+                # Que la persona contradijera al asistente es el dato que se
+                # busca al analizar: aquí se deja dicho, no deducido.
+                "" if d is None else int(d.value.value != _equivalente(v.value)),
             ]
         )
 
@@ -557,9 +602,19 @@ async def record_audit(
 async def audit_history(
     finding_id: UUID, session: SessionDep, user: UserDep
 ) -> list[AuditResponse]:
-    """El historial, rectificaciones incluidas, de la más reciente a la primera."""
+    """El historial, rectificaciones incluidas, de la más reciente a la primera.
+
+    Con autoría y con lo que el asistente proponía. Antes traía la decisión y
+    la fecha y nada más, de modo que no se podía decir quién rectificó a quién
+    ni cuándo una persona contradijo al modelo, que es el dato que se busca.
+    """
     await _hallazgo_mio(session, user, finding_id)
     registros = await SqlDecisionRepository(session).list_by_finding(finding_id)
+
+    # El veredicto del hallazgo, para contrastarlo con cada decisión.
+    emitidos = await SqlVerdictRepository(session).get_by_finding(finding_id)
+    propuesto = emitidos[-1].value.value if emitidos else None
+
     return [
         AuditResponse(
             id=a.id,
@@ -569,6 +624,12 @@ async def audit_history(
             is_current=a.is_current,
             comment=a.comment,
             created_at=a.created_at,
+            decided_by=a.user_id,
+            model_verdict=propuesto,
+            disagreed=(
+                None if propuesto is None
+                else a.value.value != _equivalente(VerdictValue(propuesto))
+            ),
         )
         for a in registros
     ]
@@ -636,6 +697,20 @@ async def compare_executions(
 
     de_ahora, de_antes = await hallazgos(nueva.id), await hallazgos(vieja.id)
     ahora, antes = set(de_ahora), set(de_antes)
+
+    # Lo que se decidió en la corrida anterior, para los que siguen ahí. Sin
+    # esto, quien compara ve el mismo hallazgo como si nadie lo hubiera mirado
+    # nunca y vuelve a revisarlo desde cero, que es lo que la comparación
+    # existe para ahorrar.
+    decididos = await _decisiones_vigentes(session, UUID(vieja.id))
+    por_hallazgo = {str(k): v for k, v in decididos.items()}
+    for huella in ahora & antes:
+        previa = por_hallazgo.get(de_antes[huella]["id"])
+        if previa is not None:
+            de_ahora[huella]["decision_anterior"] = previa.value.value
+            de_ahora[huella]["decidida_en"] = (
+                previa.created_at.isoformat() if previa.created_at else None
+            )
 
     def ordenar(huellas, origen):
         return sorted(

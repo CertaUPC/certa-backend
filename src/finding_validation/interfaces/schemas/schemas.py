@@ -49,6 +49,12 @@ class AuditResponse(BaseModel):
     is_current: bool
     comment: str | None
     created_at: datetime
+    # Quién decidió y qué proponía el asistente en ese momento. El autor se
+    # guardaba y no salía, y el veredicto de entonces no se guardaba: sin los
+    # dos, el historial no permite reconstruir una discrepancia ni atribuirla.
+    decided_by: UUID | None = None
+    model_verdict: str | None = None
+    disagreed: bool | None = None
 
 
 class DecisionRequest(BaseModel):
@@ -298,3 +304,13 @@ class MetricsResponse(BaseModel):
     misleading_verdicts: int
     misleading_follow_rate: float | None
     budget: str
+    # Lo que el criterio de la historia pedía y no salía: cuánto se cubrió, de
+    # qué se abstuvo, cómo se reparte por categoría y qué costó. El consumo
+    # decía «se informa al ejecutar», que es decir que aquí no está.
+    coverage: float
+    pending_findings: int
+    abstentions: int
+    by_cwe: dict[str, int]
+    queries_used: int
+    queries_reused: int
+    is_partial: bool
