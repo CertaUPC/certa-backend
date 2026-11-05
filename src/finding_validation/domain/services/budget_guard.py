@@ -96,10 +96,35 @@ class BudgetGuard:
         """Lo que la cascada ahorró."""
         return self.reused_queries + self.resolved_by_rule
 
+    # A partir de aqui se avisa. Enterarse de que el presupuesto se acaba
+    # cuando ya se acabo no sirve de nada: el criterio pide advertirlo antes
+    # de detenerse, para que quien dirige decida si sube el tope o acota el
+    # alcance mientras la corrida sigue viva.
+    UMBRAL_DE_AVISO = 0.8
+
+    @property
+    def is_near_limit(self) -> bool:
+        if self.is_exhausted:
+            return False
+        return self.spent_queries >= self.max_queries * self.UMBRAL_DE_AVISO
+
+    @property
+    def warning(self) -> str | None:
+        """El aviso, o nada si todavia queda holgura."""
+        if not self.is_near_limit:
+            return None
+        return (
+            f"Quedan {self.remaining} de {self.max_queries} consultas. Al "
+            "agotarse, la ejecucion se detiene y lo que falte queda "
+            "pendiente: sube el tope o acota el alcance antes."
+        )
+
     def report(self) -> str:
+        aviso = self.warning
         return (
             f"{self.spent_queries} de {self.max_queries} consultas empleadas "
             f"(US$ {self.spent_usd:.2f}). "
             f"{self.avoided_queries} evitadas: {self.reused_queries} por huella "
             f"repetida y {self.resolved_by_rule} por filtro determinista."
+            + (f" {aviso}" if aviso else "")
         )

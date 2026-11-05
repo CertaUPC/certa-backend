@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 
 from ....finding_validation.domain.entities.decision import Decision
+from ....finding_validation.domain.services.budget_guard import BudgetGuard
 from ....finding_validation.infrastructure.persistence.sql_repositories import (
     SqlDecisionRepository,
 )
@@ -23,6 +24,7 @@ from ....iam.infrastructure.persistence.grant_repository import (
     SqlAccessGrantRepository,
 )
 from ....iam.interfaces.rest.dependencies import UserDep
+from ....shared.config import get_settings
 from ....shared.database import DecisionRow, FindingRow, VerdictRow
 from ....shared.rest import SessionDep
 from ...domain.entities.participant import Participant, normalizar_codigo
@@ -43,6 +45,24 @@ from ...infrastructure.persistence.sql_repositories import (
 logger = logging.getLogger("certa.experimento")
 
 router = APIRouter(prefix="/api/v1/experiment", tags=["Experimento"])
+
+
+def _consumo(empleadas: int, reutilizadas: int) -> str:
+    """El consumo, con el aviso si el tope se acerca.
+
+    Enterarse de que el presupuesto se acaba cuando ya se acabo no sirve de
+    nada: el criterio pide advertirlo antes de detenerse, mientras todavia se
+    puede subir el tope o acotar el alcance.
+    """
+    tope = get_settings().budget_max_queries
+    guarda = BudgetGuard(max_queries=max(1, tope))
+    guarda.spent_queries = empleadas
+    texto = (
+        f"{empleadas} de {tope} consultas empleadas, "
+        f"{reutilizadas} reutilizadas sin costo"
+    )
+    aviso = guarda.warning
+    return f"{texto}. {aviso}" if aviso else texto
 
 
 @router.post("/participants", status_code=status.HTTP_201_CREATED)
@@ -497,8 +517,8 @@ async def metrics(
         anchor_rate_first_try=round(calculator.anchor_rate(anclados, len(rows)), 4),
         run_is_valid=quality.is_valid,
         run_quality_reason=quality.reason,
-        budget=(
-            f"{sum(v.attempts or 1 for v, _ in rows if v.reused_from is None)} "
-            f"consultas empleadas, {reutilizados} reutilizadas sin costo"
+        budget=_consumo(
+            sum(v.attempts or 1 for v, _ in rows if v.reused_from is None),
+            reutilizados,
         ),
     )

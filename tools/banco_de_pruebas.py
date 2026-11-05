@@ -205,6 +205,15 @@ async def _preparar(args) -> int:
 
     hecho["ejecuciones"] = ",".join(ejecuciones)
 
+    # --- los casos que hay que provocar ----------------------------------
+    #
+    # Diez de los casos no se pueden dar con datos corrientes: necesitan que
+    # la condicion exista. El grupo evaluador los dejo apuntados porque ni sus
+    # pruebas ni su ejecucion los cubrian, y preparar eso en la sesion es
+    # gastar la sesion. Van aqui.
+    if base:
+        await _provocar(container, cuentas, hecho, ejecuciones)
+
     # --- lote y participantes del estudio --------------------------------
     if base:
         from datetime import datetime, timezone
@@ -265,11 +274,143 @@ async def _preparar(args) -> int:
     print(f"     venv\\Scripts\\python.exe -m apps.worker --proyecto {hecho['proyecto']}")
     print("   y el cliente web con npm run dev en certa-frontend.")
     print("\nQue queda cubierto:")
-    print("   Epicas 1 a 3   cuentas, proyectos e ingesta, con datos ya cargados")
-    print("   Epicas 4 a 6   revision, comparacion y exportacion, con dos corridas")
-    print("   Epica  8       estudio, con el lote congelado y dos participantes")
+    print("   Epicas 1 a 3   cuentas, proyectos e ingesta, con datos cargados")
+    print("   Epicas 4 a 6   revision, comparacion y exportacion, dos corridas")
     print("   Epica  7       linea de ordenes, con el repositorio de ejemplo")
+    print("   Epica  8       estudio, con el lote congelado y dos participantes")
+    if base:
+        print("\nY las condiciones que no salen de una corrida normal, que")
+        print("el grupo evaluador dejo apuntadas para la sesion presencial:")
+        print("   CP040  aviso previo al tope          corrida con tope corto")
+        print("   CP089  metricas parciales            la misma, 2 pendientes")
+        print("   CP055  saneador fuera de alcance     SaneadorFueraDeAlcance")
+        print("   CP058  senal del filtro              SaneadorEnElFlujo")
+        print("   CP062  contexto degradado, consulta  ConfiguracionEstatica")
+        print("   CP063  contexto degradado, pantalla  la misma")
+        print("   CP078  confirmar un reemplazo        un hallazgo ya decidido")
+        print("   CP104  el veredicto no viaja         condicion de control")
+        print("   CP074 y CP075, los del filtro sin resultados y el que se")
+        print("   conserva, salen con los datos de cualquier corrida.")
     return 0
+
+
+async def _provocar(container, cuentas, hecho, ejecuciones) -> None:
+    """Deja creadas las condiciones que no salen de una corrida normal."""
+    from sqlalchemy import select
+
+    from src.finding_validation.domain.entities.decision import (
+        Decision,
+        DecisionValue,
+    )
+    from src.finding_validation.domain.services.budget_guard import BudgetGuard
+    from src.finding_validation.infrastructure.persistence.sql_repositories import (
+        SqlDecisionRepository,
+    )
+    from src.shared.database import ExecutionRow, FindingRow
+
+    # 1. Saneador en el flujo, saneador fuera de alcance y contexto degradado.
+    #    Necesitan otra raiz, porque sus archivos viven en otra carpeta: el
+    #    lector resuelve contra REPOSITORY_ROOT y no contra el proyecto.
+    dificiles = RAIZ / "tools" / "demo_repo" / "dificiles"
+    sarif_dificil = RAIZ / "tools" / "demo_repo" / "dificiles.sarif"
+    if sarif_dificil.exists():
+        from src.shared.composition import Container
+        from src.shared.config import get_settings
+
+        anterior = os.environ.get("REPOSITORY_ROOT", "")
+        os.environ["REPOSITORY_ROOT"] = str(dificiles)
+        get_settings.cache_clear()
+        otro = Container(get_settings())
+        try:
+            # Primero la del tope corto, con hallazgos que nadie ha juzgado
+            # todavia: si fueran los de una corrida ya validada, la
+            # reutilizacion por huella los resolveria sin gastar consulta y
+            # el tope no llegaria a morder.
+            async with otro.sessions() as s:
+                corta_ya = (
+                    await s.execute(
+                        select(ExecutionRow).where(
+                            ExecutionRow.project_id == hecho["proyecto"],
+                            ExecutionRow.label == "Corrida con tope corto",
+                        )
+                    )
+                ).scalar_one_or_none()
+                if corta_ya is None:
+                    rc = await otro.ingest_service(s).from_payload(
+                        UUID(hecho["proyecto"]),
+                        json.loads(sarif_dificil.read_text(encoding="utf-8")),
+                        created_by=UUID(cuentas["lider_tecnico"]),
+                        label="Corrida con tope corto",
+                    )
+                    corta = rc.execution.id
+                else:
+                    corta = UUID(corta_ya.id)
+            async with otro.sessions() as s:
+                corrida = await _traer(s, corta)
+                if corrida.pending_findings:
+                    await otro.runner(s, BudgetGuard(max_queries=1)).run(
+                        corrida, worker="banco"
+                    )
+            async with otro.sessions() as s:
+                corrida = await _traer(s, corta)
+                print(f"  corrida con tope corto: "
+                      f"{corrida.validated_findings} validados y "
+                      f"{corrida.pending_findings} pendientes")
+
+            async with otro.sessions() as s:
+                ya = (
+                    await s.execute(
+                        select(ExecutionRow).where(
+                            ExecutionRow.project_id == hecho["proyecto"],
+                            ExecutionRow.label == "Casos dificiles",
+                        )
+                    )
+                ).scalar_one_or_none()
+                if ya is None:
+                    r = await otro.ingest_service(s).from_payload(
+                        UUID(hecho["proyecto"]),
+                        json.loads(sarif_dificil.read_text(encoding="utf-8")),
+                        created_by=UUID(cuentas["lider_tecnico"]),
+                        label="Casos dificiles",
+                    )
+                    ident = r.execution.id
+                else:
+                    ident = UUID(ya.id)
+            async with otro.sessions() as s:
+                corrida = await _traer(s, ident)
+                if corrida.pending_findings:
+                    await otro.runner(s, otro.new_budget()).run(
+                        corrida, worker="banco"
+                    )
+            print("  casos dificiles: saneador en el flujo, saneador fuera de "
+                  "alcance y contexto degradado")
+        finally:
+            await otro.dispose()
+            os.environ["REPOSITORY_ROOT"] = anterior
+            get_settings.cache_clear()
+
+    # 2. Un hallazgo ya decidido por una cuenta, para que otra se encuentre
+    #    con la confirmacion de reemplazo.
+    async with container.sessions() as s:
+        hallazgo = (
+            await s.execute(
+                select(FindingRow.id).where(
+                    FindingRow.execution_id == ejecuciones[0]
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if hallazgo:
+            repo = SqlDecisionRepository(s)
+            if not await repo.list_by_finding(UUID(hallazgo)):
+                await repo.save(Decision(
+                    finding_id=UUID(hallazgo),
+                    user_id=UUID(cuentas["lider_tecnico"]),
+                    value=DecisionValue.CONFIRMED,
+                    seconds=31.0,
+                    comment="Decidido antes, para probar el reemplazo",
+                ))
+                print("  un hallazgo ya decidido, para la confirmacion de "
+                      "reemplazo")
 
 
 async def _traer(session, ident):
