@@ -155,6 +155,10 @@ class ProjectResponse(BaseModel):
     repository_path: str
     is_public_dataset: bool
     execution_count: int
+    # La última corrida y cuándo entró. Sin esto, el listado decía cuántas
+    # había y no si alguna era de esta semana o de hace tres meses.
+    last_execution_label: str | None = None
+    last_execution_at: datetime | None = None
     created_at: datetime
 
 
@@ -166,6 +170,12 @@ class ExecutionResponse(BaseModel):
     ruleset_version: str
     label: str | None = None
     status: str
+    # El alcance con el que se cargó. Sin él, el total se lee como si fuera
+    # todo lo que el analizador encontró, cuando puede ser lo que quedó
+    # después de acotar por categoría y severidad.
+    scope_cwes: list[str] = Field(default_factory=list)
+    scope_min_severity: str | None = None
+    scope_text: str = "sin acotar"
     total_findings: int
     validated_findings: int
     pending_findings: int

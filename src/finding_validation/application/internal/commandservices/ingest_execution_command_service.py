@@ -23,6 +23,16 @@ from ....infrastructure.external.sarif_parser import (
 logger = logging.getLogger(__name__)
 
 
+class EmptyScope(ValueError):
+    """El alcance elegido descarta todos los hallazgos del archivo.
+
+    No es lo mismo que un archivo sin hallazgos. Aquí el analizador sí
+    encontró algo y el filtro lo dejó fuera entero, de modo que crear la
+    ejecución sería guardar una cola vacía que nadie puede corregir sin
+    volver a cargar el archivo.
+    """
+
+
 @dataclass
 class IngestResult:
     execution: Execution
@@ -109,6 +119,19 @@ class IngestExecutionCommandService:
         alcance = scope or ScopeFilter.unrestricted()
         admitidos = alcance.apply(ingestion.findings)
         descartados = len(ingestion.findings) - len(admitidos)
+
+        # Un archivo sin hallazgos crea su ejecución con cero y lo dice: no
+        # encontrar nada es un resultado. Que el alcance los descarte todos
+        # no lo es, es un filtro mal puesto, y dejaba una ejecución vacía que
+        # ya no se podía corregir: había que cargar el archivo otra vez.
+        if descartados and not admitidos:
+            raise EmptyScope(
+                f"El alcance elegido descarta los {descartados} hallazgos del "
+                "archivo y no deja ninguno que validar. Corrige las "
+                "categorías o la severidad y vuelve a cargarlo; no se ha "
+                "creado ninguna ejecución ni gastado presupuesto."
+            )
+
         etiquetados = self._label(admitidos)
 
         if not ingestion.ruleset_version:
@@ -161,4 +184,9 @@ class IngestExecutionCommandService:
         return etiquetados
 
 
-__all__ = ["IngestExecutionCommandService", "IngestResult", "SarifError"]
+__all__ = [
+    "EmptyScope",
+    "IngestExecutionCommandService",
+    "IngestResult",
+    "SarifError",
+]

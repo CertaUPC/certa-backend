@@ -11,6 +11,9 @@ from sqlalchemy import select
 from ....iam.interfaces.rest.dependencies import UserDep
 from ....shared.database import ExecutionRow, FindingRow, ProjectRow, VerdictRow
 from ....shared.rest import ContainerDep, SessionDep
+from ...application.internal.commandservices.ingest_execution_command_service import (
+    EmptyScope,
+)
 from ...domain.entities.decision import Decision, DecisionValue
 from ...domain.entities.execution import Execution, ExecutionStatus
 from ...domain.services.retention_policy import (
@@ -45,6 +48,22 @@ from ..schemas.schemas import (
 router = APIRouter(prefix="/api/v1/executions", tags=["Ejecuciones"])
 
 
+def _describe_scope(scope: ScopeFilter) -> str:
+    """El alcance, dicho para leerse junto al total.
+
+    El detalle enseñaba «41 alertas» sin decir que eran las que quedaron tras
+    acotar, de modo que la cifra se leía como el total del analizador.
+    """
+    if scope.is_unrestricted:
+        return "sin acotar"
+    partes = []
+    if scope.cwes:
+        partes.append(", ".join(sorted(scope.cwes)))
+    if scope.min_severity:
+        partes.append(f"severidad {scope.min_severity} o mayor")
+    return "acotada a " + " y ".join(partes)
+
+
 def _to_response(e: Execution, project_name: str = "") -> ExecutionResponse:
     return ExecutionResponse(
         id=e.id,
@@ -54,6 +73,9 @@ def _to_response(e: Execution, project_name: str = "") -> ExecutionResponse:
         ruleset_version=e.ruleset_version,
         label=e.label,
         status=e.status.value,
+        scope_cwes=sorted(e.scope.cwes),
+        scope_min_severity=e.scope.min_severity,
+        scope_text=_describe_scope(e.scope),
         total_findings=e.total_findings,
         validated_findings=e.validated_findings,
         pending_findings=e.pending_findings,
@@ -96,6 +118,10 @@ async def ingest(
         )
     except SarifError as exc:
         # No cumple el esquema. Se rechaza sin dejar una ejecución a medias.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except EmptyScope as exc:
+        # El filtro los descartó todos. Se avisa antes de crear nada, que es
+        # lo que permite corregirlo sin volver a cargar el archivo.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     nombres = await _project_names(session, {body.project_id})

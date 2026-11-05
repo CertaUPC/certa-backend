@@ -299,6 +299,76 @@ class TestProjects:
         assert r.status_code in (200, 201), r.text
         assert r.json()["repository_path"] == ""
 
+    async def test_el_cambio_de_rol_deja_constancia(self, client):
+        """Lo que el grupo evaluador anotó: se aplicaba sin dejar rastro.
+
+        Importa para el mismo motivo que la traza de decisiones: quién tiene
+        qué permiso y desde cuándo es la pregunta que se hace después, no
+        antes.
+        """
+        lider = await _token(client, "lider_tecnico")
+        dev = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "ascendido@upc.edu.pe", "password": "contrasena-segura"},
+        )
+        subject = dev.json().get("id")
+        if subject is None:
+            from sqlalchemy import select as _sel
+
+            from src.iam.infrastructure.persistence.models import UserRow
+            async with app.state.container.sessions() as s_:
+                fila = (
+                    await s_.execute(
+                        _sel(UserRow).where(UserRow.email == "ascendido@upc.edu.pe")
+                    )
+                ).scalar_one()
+                subject = fila.id
+
+        r = await client.patch(
+            f"/api/v1/auth/users/{subject}/role?role=investigador",
+            headers=_auth(lider),
+        )
+        assert r.status_code == 200, r.text
+
+        traza = await client.get(
+            f"/api/v1/auth/users/{subject}/role-history", headers=_auth(lider)
+        )
+        assert traza.status_code == 200, traza.text
+        aplicado = [x for x in traza.json() if x["outcome"] == "aplicado"]
+        assert len(aplicado) == 1
+        assert aplicado[0]["from_role"] == "desarrollador"
+        assert aplicado[0]["to_role"] == "investigador"
+        assert aplicado[0]["actor_id"] is not None
+        assert aplicado[0]["created_at"] is not None
+
+    async def test_el_intento_sin_autorizacion_tambien_consta(self, client):
+        """De un intento denegado lo que importa es que conste."""
+        from sqlalchemy import select as _sel
+
+        from src.iam.infrastructure.persistence.models import UserRow
+
+        lider = await _token(client, "lider_tecnico")
+        intruso = await _token(client, "desarrollador")
+        async with app.state.container.sessions() as s_:
+            victima = (
+                await s_.execute(
+                    _sel(UserRow).where(UserRow.email == "lider_tecnico@upc.edu.pe")
+                )
+            ).scalar_one().id
+
+        r = await client.patch(
+            f"/api/v1/auth/users/{victima}/role?role=desarrollador",
+            headers=_auth(intruso),
+        )
+        assert r.status_code == 403
+
+        traza = await client.get(
+            f"/api/v1/auth/users/{victima}/role-history", headers=_auth(lider)
+        )
+        intentos = [x for x in traza.json() if x["outcome"] == "sin_autorizacion"]
+        assert len(intentos) == 1
+        assert intentos[0]["to_role"] == "desarrollador"
+
     async def test_developer_cannot_create(self, client):
         """Reformulada con la pertenencia al proyecto, conservando lo que la
         historia exige.
@@ -428,8 +498,18 @@ class TestIngest:
         )
         assert r.status_code == 422
 
-    async def test_scope_filter_reports_zero_without_error(self, client):
-        """Un filtro sin coincidencias se informa, no se convierte en fallo."""
+    async def test_un_alcance_que_lo_descarta_todo_no_crea_la_ejecucion(self, client):
+        """Antes se creaba igual, con la cola vacía, y se informaba.
+
+        Parecía lo prudente: no convertir en fallo algo que el archivo sí
+        traía. Pero el criterio pide avisar «y permitir corregirlo», y una
+        ejecución vacía ya creada no se corrige: hay que volver a cargar el
+        archivo entero y queda la otra de recuerdo en el listado. El grupo
+        evaluador lo anotó en el primer ciclo.
+
+        Un archivo sin hallazgos sigue creando su ejecución con cero, que es
+        otra cosa: ahí el analizador no encontró nada y eso es un resultado.
+        """
         token = await _token(client)
         r = await client.post(
             "/api/v1/executions",
@@ -440,11 +520,26 @@ class TestIngest:
             },
             headers=_auth(token),
         )
-        assert r.status_code == 201
-        body = r.json()
-        assert body["ingested"] == 0
-        assert body["filtered_out"] == 1
-        assert "presupuesto" in body["message"]
+        assert r.status_code == 422, r.text
+        assert "no deja ninguno" in r.json()["detail"]
+        assert "no se ha creado" in r.json()["detail"].lower()
+
+        # Y no quedó nada que corregir a mano.
+        listado = await client.get("/api/v1/executions", headers=_auth(token))
+        assert all(e["total_findings"] > 0 for e in listado.json())
+
+    async def test_un_archivo_sin_hallazgos_si_crea_su_ejecucion(self, client):
+        """No encontrar nada es un resultado, y se guarda como tal."""
+        token = await _token(client)
+        vacio = sarif_doc()
+        vacio["runs"][0]["results"] = []
+        r = await client.post(
+            "/api/v1/executions",
+            json={"project_id": str(PROJECT_ID), "sarif": vacio},
+            headers=_auth(token),
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["ingested"] == 0
 
     async def test_rejects_unknown_severity(self, client):
         token = await _token(client)

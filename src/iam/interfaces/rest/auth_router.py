@@ -11,7 +11,7 @@ from ...domain.access_grant import GrantKind, InvalidGrant, mint, parse
 from ...infrastructure.persistence.grant_repository import (
     SqlAccessGrantRepository,
 )
-from ...infrastructure.persistence.models import UserRow
+from ...infrastructure.persistence.models import RoleChangeRow, UserRow
 from ...infrastructure.security import hash_password, issue_token, verify_password
 from ..schemas.schemas import (
     GrantExchangeRequest,
@@ -237,6 +237,29 @@ async def exchange_grant(
     return TokenResponse(access_token=token, role=grant.subject_kind.value)
 
 
+async def _anota_cambio_de_rol(
+    session, subject_id, actor_id, from_role, to_role, outcome, detail=None
+) -> None:
+    """Deja constancia del cambio o del intento.
+
+    Se guarda también lo rechazado: de un intento denegado lo que importa es
+    justamente que conste. La escritura va en su propia transacción, de modo
+    que anotar el intento no dependa de que la operación siguiera adelante.
+    """
+    session.add(
+        RoleChangeRow(
+            id=str(uuid4()),
+            subject_id=str(subject_id),
+            actor_id=str(actor_id) if actor_id else None,
+            from_role=from_role,
+            to_role=to_role,
+            outcome=outcome,
+            detail=detail,
+        )
+    )
+    await session.commit()
+
+
 @router.patch("/users/{user_id}/role")
 async def change_role(
     user_id: str, role: str, session: SessionDep, user: UserDep
@@ -246,9 +269,24 @@ async def change_role(
     Es la unica via para que exista un investigador, y por eso el despliegue
     necesita sembrar el primero: sin nadie con `lider_tecnico`, nadie puede
     conceder nada.
+
+    Cada cambio y cada intento quedan anotados con su autor y su fecha. Antes
+    se aplicaba sin dejar rastro, de modo que el rol de una cuenta podía haber
+    cambiado varias veces y solo constaba el último, sin saber quién.
     """
-    user.require("lider_tecnico")
+    try:
+        user.require("lider_tecnico")
+    except HTTPException:
+        await _anota_cambio_de_rol(
+            session, user_id, user.user_id, None, role, "sin_autorizacion",
+            f"Lo intentó una credencial de tipo {user.kind} con rol {user.role}",
+        )
+        raise
+
     if role not in ROLES:
+        await _anota_cambio_de_rol(
+            session, user_id, user.user_id, None, role, "rol_desconocido",
+        )
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"Rol desconocido. Se admiten: {', '.join(ROLES)}",
@@ -257,10 +295,46 @@ async def change_role(
         await session.execute(select(UserRow).where(UserRow.id == user_id))
     ).scalar_one_or_none()
     if fila is None:
+        await _anota_cambio_de_rol(
+            session, user_id, user.user_id, None, role, "cuenta_inexistente",
+        )
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa cuenta")
+
+    anterior = fila.role
     fila.role = role
     await session.commit()
+    await _anota_cambio_de_rol(
+        session, user_id, user.user_id, anterior, role, "aplicado",
+    )
     return {"id": fila.id, "email": fila.email, "role": fila.role}
+
+
+@router.get("/users/{user_id}/role-history")
+async def role_history(user_id: str, session: SessionDep, user: UserDep) -> list[dict]:
+    """La traza de roles de una cuenta, lo aplicado y lo intentado.
+
+    La consulta el mismo rol que puede conceder: si la viera cualquiera, el
+    registro de intentos denegados diría quién anda probando qué.
+    """
+    user.require("lider_tecnico")
+    filas = (
+        await session.execute(
+            select(RoleChangeRow)
+            .where(RoleChangeRow.subject_id == user_id)
+            .order_by(RoleChangeRow.created_at.desc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "actor_id": f.actor_id,
+            "from_role": f.from_role,
+            "to_role": f.to_role,
+            "outcome": f.outcome,
+            "detail": f.detail,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        }
+        for f in filas
+    ]
 
 
 @router.post("/participant", response_model=ParticipantAccessResponse)

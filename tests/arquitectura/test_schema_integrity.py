@@ -34,6 +34,13 @@ CRUCES_DE_CONTEXTO = {
     # Ponerle clave foranea obligaria al contexto de acceso a conocer los dos
     # esquemas ajenos, que es justo lo que la extraccion de iam deshizo.
     ("access_grants", "subject_id"),
+    # La traza de roles guarda tambien los intentos, y un intento puede ser
+    # sobre una cuenta que no existe: esa constancia es justo la que importa.
+    # Con clave foranea, el registro del intento fallaria al escribirse.
+    ("role_changes", "subject_id"),
+    # Y el autor se conserva aunque su cuenta se borre despues: una traza que
+    # desaparece cuando se va quien actuo no es una traza.
+    ("role_changes", "actor_id"),
 }
 
 # Columnas que acaban en _id y no son referencias a nada de este esquema.

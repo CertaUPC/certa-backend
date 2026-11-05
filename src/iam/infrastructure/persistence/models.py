@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,4 +92,35 @@ class AccessGrantRow(Base):
         # La verificación busca por tipo y sujeto al listar lo vigente de un
         # proyecto o de un participante.
         Index("ix_access_grants_subject", "subject_kind", "subject_id"),
+    )
+
+
+class RoleChangeRow(Base):
+    """Cada cambio de rol y cada intento, con quién y cuándo.
+
+    El cambio se aplicaba y no dejaba rastro: el rol de una cuenta podía
+    haber cambiado tres veces y la tabla de cuentas solo decía el último, sin
+    autor ni fecha. Y un intento sin autorización no dejaba nada en absoluto,
+    de modo que no había forma de notar que alguien lo estaba intentando.
+
+    Se guardan también los rechazados, que es lo que pide el criterio: lo que
+    importa de un intento denegado es justamente que conste.
+    """
+
+    __tablename__ = "role_changes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # A quién se le cambia el rol. Sin clave foránea a propósito: la constancia
+    # de un intento sobre una cuenta que no existe también vale.
+    subject_id: Mapped[str] = mapped_column(String(36))
+    actor_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    from_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_role: Mapped[str] = mapped_column(String(20))
+    # aplicado, sin_autorizacion, rol_desconocido o cuenta_inexistente.
+    outcome: Mapped[str] = mapped_column(String(24))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        Index("ix_role_changes_subject", "subject_id", "created_at"),
     )

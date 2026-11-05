@@ -138,15 +138,32 @@ def parse_sarif(payload: dict[str, Any]) -> SarifIngestion:
     if not isinstance(payload, dict):
         raise SarifError("El documento SARIF debe ser un objeto")
 
-    version = payload.get("version")
+    # Falta el campo y traer otra versión son dos errores distintos, y el
+    # mensaje tiene que distinguirlos. Decir «el archivo declara None» obliga
+    # a quien carga a adivinar que lo que falta es el campo «version».
+    if "version" not in payload:
+        raise SarifError(
+            "Falta el campo obligatorio 'version'. Un SARIF válido lo declara "
+            f"en la raíz del documento, con el valor '{SARIF_VERSION}'."
+        )
+
+    version = payload["version"]
     if version != SARIF_VERSION:
         raise SarifError(
             f"Se esperaba SARIF {SARIF_VERSION} y el archivo declara {version!r}"
         )
 
-    runs = payload.get("runs")
+    if "runs" not in payload:
+        raise SarifError(
+            "Falta el campo obligatorio 'runs'. Es el arreglo con lo que "
+            "encontró cada corrida del analizador."
+        )
+    runs = payload["runs"]
     if not isinstance(runs, list):
-        raise SarifError("El documento SARIF no declara el arreglo 'runs'")
+        raise SarifError(
+            "El campo 'runs' tiene que ser un arreglo, y aquí viene "
+            f"{type(runs).__name__}."
+        )
 
     ingestion = SarifIngestion()
 

@@ -34,7 +34,7 @@ from ..schemas.schemas import ProjectRequest, ProjectResponse
 router = APIRouter(prefix="/api/v1/projects", tags=["Proyectos"])
 
 
-def _to_response(row: ProjectRow, executions: int) -> ProjectResponse:
+def _to_response(row: ProjectRow, executions: int, ultima=None) -> ProjectResponse:
     return ProjectResponse(
         id=UUID(row.id),
         name=row.name,
@@ -42,6 +42,11 @@ def _to_response(row: ProjectRow, executions: int) -> ProjectResponse:
         repository_path=row.repository_path,
         is_public_dataset=row.is_public_dataset,
         execution_count=executions,
+        # La ficha decía «2 ejecuciones» y nada más, de modo que para saber si
+        # el proyecto seguía vivo había que entrar. La última y su fecha
+        # contestan eso desde el listado.
+        last_execution_label=ultima[0] if ultima else None,
+        last_execution_at=ultima[1] if ultima else None,
         created_at=row.created_at,
     )
 
@@ -77,7 +82,22 @@ async def list_projects(session: SessionDep, user: UserDep) -> list[ProjectRespo
             )
         ).all()
     )
-    return [_to_response(r, conteos.get(r.id, 0)) for r in rows]
+
+    # Y una sola pasada para la última de cada uno, por la misma razón: una
+    # consulta por proyecto crece con la lista.
+    ultimas: dict[str, tuple[str | None, object]] = {}
+    for pid, etiqueta, creada in (
+        await session.execute(
+            select(
+                ExecutionRow.project_id, ExecutionRow.label, ExecutionRow.created_at
+            ).order_by(ExecutionRow.created_at.desc())
+        )
+    ).all():
+        ultimas.setdefault(pid, (etiqueta, creada))
+
+    return [
+        _to_response(r, conteos.get(r.id, 0), ultimas.get(r.id)) for r in rows
+    ]
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
