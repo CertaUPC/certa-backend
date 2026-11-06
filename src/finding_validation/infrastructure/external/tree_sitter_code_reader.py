@@ -1,15 +1,23 @@
 """Contexto por árbol sintáctico. Un solo adaptador, parametrizado por
 `LanguageProfile`: sumar un lenguaje no toca este archivo."""
 
+# Las anotaciones no se evaluan al importar, de modo que este modulo se puede
+# importar sin tree_sitter instalado: lo necesita el trabajador, que parsea
+# codigo, no el servicio web, que no abre archivos. El import de tree_sitter
+# baja a los dos metodos que de verdad lo usan en ejecucion.
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from tree_sitter import Language, Node, Parser, Query, QueryCursor
+from typing import TYPE_CHECKING
 
 from ...domain.entities.code_context import CodeContext
 from ...domain.entities.finding import Finding
 from .language_profile import LanguageProfile
 from .window_code_reader import CodeUnavailable, render_numbered, window_around
+
+if TYPE_CHECKING:  # solo para las anotaciones; no se importa en ejecucion
+    from tree_sitter import Language, Node, Parser
 
 DEFAULT_MAX_CONTEXT_LINES = 250
 
@@ -71,6 +79,10 @@ class TreeSitterCodeReader:
     _language: Language = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        # Perezoso a proposito: importar la clase no exige tree_sitter; solo
+        # instanciar un lector real lo hace, y eso solo ocurre en el trabajador.
+        from tree_sitter import Language, Parser
+
         grammar = self.profile.load_grammar()
         self._language = Language(grammar.language())
         self._parser = Parser(self._language)
@@ -97,7 +109,9 @@ class TreeSitterCodeReader:
         except OSError as exc:
             raise CodeUnavailable(f"No se pudo leer {relative_path}: {exc}") from exc
 
-    def _query(self, source: str, query_text: str) -> dict[str, list[Node]]:
+    def _query(self, source: str, query_text: str) -> dict[str, list["Node"]]:
+        from tree_sitter import Query, QueryCursor
+
         tree = self._parser.parse(source.encode("utf-8"))
         cursor = QueryCursor(Query(self._language, query_text))
         return cursor.captures(tree.root_node)

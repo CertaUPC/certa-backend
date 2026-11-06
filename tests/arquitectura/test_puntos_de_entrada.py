@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import subprocess
+import sys
 
 import pytest
 
@@ -62,4 +64,36 @@ def test_los_relativos_nombran_a_un_hermano_real(archivo: pathlib.Path) -> None:
         + "\n".join(sueltos)
         + "\n    El dominio vive en src/, de modo que el import va absoluto: "
         "from src.<lo que sea>"
+    )
+
+
+# ── El servicio web no arrastra tree_sitter ───────────────────────────
+#
+# apps/api/requirements.txt excluye tree_sitter a proposito: la web no abre
+# archivos de codigo, eso es del trabajador. Pero el grafo de imports lo
+# arrastraba, y el arranque en Render reventaba con «No module named
+# tree_sitter». La regla: apps.api.main tiene que importar aunque tree_sitter
+# no este instalado. Se comprueba en un proceso aparte que bloquea el paquete.
+
+
+def test_el_servicio_web_importa_sin_tree_sitter():
+    guion = (
+        "import sys\n"
+        "class _Bloqueo:\n"
+        "    def find_spec(self, nombre, ruta=None, destino=None):\n"
+        "        if nombre == 'tree_sitter' or nombre.startswith('tree_sitter.'):\n"
+        "            raise ModuleNotFoundError(\"No module named 'tree_sitter'\")\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, _Bloqueo())\n"
+        "import apps.api.main as m\n"
+        "assert type(m.app).__name__ == 'FastAPI'\n"
+        "print('ok')\n"
+    )
+    hecho = subprocess.run(
+        [sys.executable, "-c", guion],
+        capture_output=True, text=True, check=False,
+        cwd=str(pathlib.Path(__file__).resolve().parents[2]),
+    )
+    assert hecho.returncode == 0, (
+        "apps.api.main no importa sin tree_sitter:\n" + hecho.stderr[-1500:]
     )
