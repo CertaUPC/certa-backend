@@ -7,7 +7,10 @@ services:
     # por su cuenta, de modo que sin este paso la base quedaria vacia y todo
     # recorrido responderia error en el primer despliegue.
     buildCommand: pip install -r apps/api/requirements.txt && alembic upgrade head
-    startCommand: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    # `python -m uvicorn` y no `uvicorn` a secas: invocar el modulo no depende
+    # de que el ejecutable quede en el PATH del entorno de Render, que es de
+    # donde salia el «uvicorn: command not found».
+    startCommand: python -m uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       # El origen del cliente web. Sin el, el navegador bloquea toda peticion.
