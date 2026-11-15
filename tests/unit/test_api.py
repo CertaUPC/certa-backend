@@ -541,6 +541,30 @@ class TestIngest:
         assert r.status_code == 201, r.text
         assert r.json()["ingested"] == 0
 
+    async def test_el_detalle_de_una_ejecucion_acotada_trae_el_alcance(self, client):
+        """CP029. El alcance se guardaba pero se releía como sin acotar, de modo
+        que al volver a abrir una ejecución acotada el detalle no mostraba el
+        filtro. Ahora el detalle, que lee de la base, lo trae."""
+        token = await _token(client)
+        creada = await client.post(
+            "/api/v1/executions",
+            json={
+                "project_id": str(PROJECT_ID),
+                "sarif": sarif_doc(),
+                "scope": {"cwes": ["CWE-89"], "min_severity": "warning"},
+            },
+            headers=_auth(token),
+        )
+        assert creada.status_code == 201, creada.text
+        eid = creada.json()["execution"]["id"]
+
+        detalle = await client.get(f"/api/v1/executions/{eid}", headers=_auth(token))
+        assert detalle.status_code == 200, detalle.text
+        d = detalle.json()
+        assert d["scope_text"] != "sin acotar"
+        assert "CWE-89" in d["scope_cwes"]
+        assert d["scope_min_severity"] == "warning"
+
     async def test_rejects_unknown_severity(self, client):
         token = await _token(client)
         r = await client.post(

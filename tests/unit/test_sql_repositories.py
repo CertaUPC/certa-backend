@@ -24,6 +24,7 @@ from src.finding_validation.domain.entities.verdict import Verdict, VerdictValue
 from src.finding_validation.domain.value_objects.code_location import CodeLocation
 from src.finding_validation.domain.value_objects.fingerprint import Fingerprint
 from src.finding_validation.domain.value_objects.justification import Justification
+from src.finding_validation.domain.value_objects.scope_filter import ScopeFilter
 from src.finding_validation.infrastructure.persistence.sql_repositories import (
     SqlCodeContextRepository,
     SqlExecutionRepository,
@@ -86,6 +87,32 @@ class TestExecutionQueue:
         assert leida is not None
         assert leida.ruleset_version == "1.95.0"
         assert leida.status is ExecutionStatus.PENDING
+
+    async def test_el_alcance_acotado_sobrevive_el_viaje(self, session):
+        """Se guardaba el texto de describe(), que no se podía releer, así que
+        una ejecución acotada volvía de la base como sin acotar y el detalle no
+        mostraba el filtro (CP029). Ahora el alcance redondea: lo que entra
+        vuelve igual."""
+        repo = SqlExecutionRepository(session)
+        e = Execution(
+            project_id=PROJECT_ID,
+            ruleset_version="1",
+            scope=ScopeFilter(cwes={"CWE-89"}, min_severity="warning"),
+        )
+        await repo.save(e)
+        leida = await repo.get(e.id)
+        assert leida is not None
+        assert leida.scope.cwes == frozenset({"CWE-89"})
+        assert leida.scope.min_severity == "warning"
+        assert not leida.scope.is_unrestricted
+
+    async def test_sin_alcance_vuelve_sin_acotar(self, session):
+        repo = SqlExecutionRepository(session)
+        e = Execution(project_id=PROJECT_ID, ruleset_version="1")
+        await repo.save(e)
+        leida = await repo.get(e.id)
+        assert leida is not None
+        assert leida.scope.is_unrestricted
 
     async def test_claims_the_oldest_pending(self, session):
         repo = SqlExecutionRepository(session)

@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -46,7 +47,7 @@ class ScopeFilter:
         return [f for f in findings if self.admits(f)]
 
     def describe(self) -> str:
-        """Se guarda con la ejecución, para saber después con qué alcance corrió."""
+        """Texto legible del alcance, para herramientas de línea de órdenes."""
         if self.is_unrestricted:
             return "sin restricción de alcance"
         partes = []
@@ -55,3 +56,32 @@ class ScopeFilter:
         if self.min_severity:
             partes.append(f"severidad {self.min_severity} o superior")
         return "; ".join(partes)
+
+    def to_storage(self) -> str | None:
+        """Lo que se guarda con la ejecución. Estructurado, no el texto de
+        `describe()`: ese era legible pero no se podía releer, de modo que una
+        ejecución acotada volvía de la base como si no lo estuviera. `None`
+        cuando no hay alcance, para no ocupar la columna sin motivo."""
+        if self.is_unrestricted:
+            return None
+        return json.dumps(
+            {"cwes": sorted(self.cwes), "min_severity": self.min_severity}
+        )
+
+    @classmethod
+    def from_storage(cls, raw: str | None) -> "ScopeFilter":
+        """Reconstruye el alcance de lo guardado. Tolera lo heredado: las filas
+        anteriores guardaban el texto de `describe()`, que no es JSON; esas
+        vuelven como sin acotar en lugar de romper la lectura."""
+        if not raw:
+            return cls.unrestricted()
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            return cls.unrestricted()
+        if not isinstance(data, dict):
+            return cls.unrestricted()
+        return cls(
+            cwes=frozenset(data.get("cwes") or ()),
+            min_severity=data.get("min_severity"),
+        )
