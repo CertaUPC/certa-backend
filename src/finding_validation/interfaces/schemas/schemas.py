@@ -218,6 +218,8 @@ class VerdictResponse(BaseModel):
     anchor_verified: bool
     attempts: int
     reused: bool
+    reused_from_execution: UUID | None = None
+    reused_from_label: str | None = None
     justification: str | None
     cited_lines: list[int]
 

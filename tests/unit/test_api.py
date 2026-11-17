@@ -633,6 +633,52 @@ class TestRunAndAudit:
         assert items[0]["priority"] is not None
         assert items[0]["priority_reason"]
 
+    async def test_un_veredicto_reutilizado_dice_de_que_corrida_viene(self, client):
+        """CP069: un veredicto reutilizado indica de qué corrida proviene.
+
+        La reutilización por huella evita pagar dos veces el mismo juicio. Para
+        leerlo con criterio hace falta saber de dónde salió, así que el detalle
+        del hallazgo nombra la ejecución de origen, no solo que se reutilizó.
+        """
+        token = await _token(client)
+        primera = (
+            await client.post(
+                "/api/v1/executions",
+                json={
+                    "project_id": str(PROJECT_ID),
+                    "sarif": sarif_doc(),
+                    "label": "Primera corrida",
+                },
+                headers=_auth(token),
+            )
+        ).json()["execution"]["id"]
+        await client.post(f"/api/v1/executions/{primera}/run", headers=_auth(token))
+        await _procesar(client)
+
+        segunda = (
+            await client.post(
+                "/api/v1/executions",
+                json={
+                    "project_id": str(PROJECT_ID),
+                    "sarif": sarif_doc(),
+                    "label": "Segunda corrida",
+                },
+                headers=_auth(token),
+            )
+        ).json()["execution"]["id"]
+        await client.post(f"/api/v1/executions/{segunda}/run", headers=_auth(token))
+        await _procesar(client)
+
+        items = (
+            await client.get(
+                f"/api/v1/executions/{segunda}/findings", headers=_auth(token)
+            )
+        ).json()
+        veredicto = items[0]["verdict"]
+        assert veredicto["reused"] is True
+        assert veredicto["reused_from_label"] == "Primera corrida"
+        assert veredicto["reused_from_execution"] == primera
+
     async def test_context_is_auditable(self, client):
         """Se puede recuperar el contexto exacto que vio el modelo."""
         token = await _token(client)

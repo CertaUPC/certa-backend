@@ -357,6 +357,22 @@ async def list_findings(
             latest[v.finding_id] = v
         todos.setdefault(v.finding_id, []).append(v)
 
+    # De qué corrida viene cada veredicto reutilizado (CP069). El veredicto de
+    # origen vive en otra ejecución, de modo que no está en verdict_rows: se
+    # resuelve aparte, del veredicto fuente a su hallazgo y de ahí a su corrida.
+    fuentes = {v.reused_from for v in latest.values() if v.reused_from}
+    origen: dict[str, tuple[str, str | None]] = {}
+    if fuentes:
+        filas = (
+            await session.execute(
+                select(VerdictRow.id, ExecutionRow.id, ExecutionRow.label)
+                .join(FindingRow, FindingRow.id == VerdictRow.finding_id)
+                .join(ExecutionRow, ExecutionRow.id == FindingRow.execution_id)
+                .where(VerdictRow.id.in_(fuentes))
+            )
+        ).all()
+        origen = {vid: (eid, etiqueta) for vid, eid, etiqueta in filas}
+
     salida: list[FindingResponse] = []
     for r in rows:
         v = latest.get(r.id)
@@ -395,6 +411,14 @@ async def list_findings(
                     anchor_verified=v.anchor_verified,
                     attempts=v.attempts,
                     reused=v.reused_from is not None,
+                    reused_from_execution=(
+                        UUID(origen[v.reused_from][0])
+                        if v.reused_from in origen
+                        else None
+                    ),
+                    reused_from_label=(
+                        origen[v.reused_from][1] if v.reused_from in origen else None
+                    ),
                     justification=v.justification,
                     cited_lines=list(v.cited_lines or []),
                 ),
