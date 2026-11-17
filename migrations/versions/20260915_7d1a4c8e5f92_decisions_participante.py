@@ -55,5 +55,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("decisions") as lote:
-        lote.drop_constraint(RESTRICCION, type_="foreignkey")
+    # SQLite no guarda el nombre de la clave foranea, de modo que al reflejar la
+    # tabla el modo por lotes no la encuentra para soltarla y el downgrade cae.
+    # Se le pasa una convencion de nombres: con ella la restriccion reflejada
+    # recibe un nombre por el que si se puede referir. Sobre PostgreSQL, donde el
+    # nombre si persiste, se emite el ALTER directo con el nombre original.
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        convencion = {
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+        }
+        with op.batch_alter_table(
+            "decisions", naming_convention=convencion
+        ) as lote:
+            lote.drop_constraint(
+                "fk_decisions_participant_id_participants", type_="foreignkey"
+            )
+    else:
+        op.drop_constraint(RESTRICCION, "decisions", type_="foreignkey")
