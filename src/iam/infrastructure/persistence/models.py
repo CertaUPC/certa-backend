@@ -34,6 +34,10 @@ class UserRow(Base):
     password_hash: Mapped[str] = mapped_column(String(120))
     role: Mapped[str] = mapped_column(String(20), default="desarrollador")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # El correo es la identidad de la cuenta, pero hasta ahora nadie confirmaba
+    # que perteneciera a quien se registra. Queda en falso al crear la cuenta y
+    # pasa a verdadero cuando se abre el enlace de verificación.
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     __table_args__ = (
@@ -41,6 +45,39 @@ class UserRow(Base):
             "role IN ('desarrollador','investigador','lider_tecnico')",
             name="ck_users_role",
         ),
+    )
+
+
+class AccountTokenRow(Base):
+    """Tokens de un solo uso para restablecer la contraseña y verificar el correo.
+
+    Del token solo se guarda la huella, como en las credenciales acotadas: el
+    valor en claro viaja una vez en el correo y no vuelve a existir en la base.
+    Se marca usado en lugar de borrarlo, para que un segundo intento con el
+    mismo enlace se distinga de uno nunca emitido.
+    """
+
+    __tablename__ = "account_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    # 'reset' para restablecer la contraseña, 'verify' para confirmar el correo.
+    purpose: Mapped[str] = mapped_column(String(10))
+    token_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('reset','verify')",
+            name="ck_account_tokens_purpose",
+        ),
+        Index("ix_account_tokens_hash", "token_hash"),
     )
 
 

@@ -1,6 +1,8 @@
 """Credenciales y sesiones. Fuera del dominio: cómo se cifra una contraseña no
 es una regla de validar hallazgos."""
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -29,6 +31,17 @@ def verify_password(plain: str, hashed: str) -> bool:
         # Un hash corrupto o de otro formato no es una excepción del servicio:
         # es simplemente una verificación que no pasa.
         return False
+
+
+def mint_account_token() -> tuple[str, str]:
+    """Devuelve (valor en claro, huella). El claro viaja en el correo una vez;
+    en la base solo queda la huella, de modo que ni el servicio lo recupera."""
+    raw = secrets.token_urlsafe(32)
+    return raw, hash_account_token(raw)
+
+
+def hash_account_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def issue_token(

@@ -16,6 +16,7 @@ escribía, y no coincidía con la que dejaba la línea de órdenes, de modo que 
 mismo repositorio acababa en dos proyectos.
 """
 
+import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
@@ -24,12 +25,14 @@ from sqlalchemy import func, select
 from ....iam.infrastructure.persistence.models import UserRow
 from ....iam.interfaces.rest.dependencies import UserDep
 from ....shared.database import ExecutionRow, ProjectRow
-from ....shared.rest import SessionDep
+from ....shared.rest import ContainerDep, SessionDep
 from ...domain.entities.membership import MemberRole, Membership
 from ...infrastructure.persistence.membership_repository import (
     SqlMembershipRepository,
 )
 from ..schemas.schemas import ProjectRequest, ProjectResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["Proyectos"])
 
@@ -206,6 +209,7 @@ async def invite_member(
     project_id: UUID,
     session: SessionDep,
     user: UserDep,
+    container: ContainerDep,
     user_id: UUID | None = None,
     email: str | None = None,
 ) -> dict:
@@ -257,6 +261,29 @@ async def invite_member(
             invited_by=user.user_id,
         )
     )
+    # Aviso al invitado. Un fallo de correo no deshace la invitación.
+    try:
+        destino = (
+            await session.execute(
+                select(UserRow.email).where(UserRow.id == str(user_id))
+            )
+        ).scalar_one_or_none()
+        nombre = (
+            await session.execute(
+                select(ProjectRow.name).where(ProjectRow.id == str(project_id))
+            )
+        ).scalar_one_or_none()
+        invitador = (
+            await session.execute(
+                select(UserRow.email).where(UserRow.id == str(user.user_id))
+            )
+        ).scalar_one_or_none() if user.user_id else None
+        if destino:
+            await container.email.send_project_invitation(
+                destino, destino, nombre or "un proyecto", invitador or "Un administrador"
+            )
+    except Exception:
+        logger.warning("No se pudo avisar de la invitación", exc_info=True)
     return {"project_id": str(project_id), "user_id": str(user_id), "role": "miembro"}
 
 

@@ -88,6 +88,34 @@ def sarif_doc() -> dict:
     }
 
 
+class FakeEmail:
+    """Correo de pruebas: captura lo que se enviaría, sin salir a la red."""
+
+    def __init__(self) -> None:
+        self.resets: list[tuple[str, str]] = []
+        self.changed: list[str] = []
+        self.verifications: list[tuple[str, str]] = []
+        self.invitations: list[tuple[str, str, str]] = []
+
+    async def send_password_reset(self, to_email, to_name, reset_link) -> None:
+        self.resets.append((to_email, reset_link))
+
+    async def send_password_changed(self, to_email, to_name) -> None:
+        self.changed.append(to_email)
+
+    async def send_email_verification(self, to_email, to_name, verify_link) -> None:
+        self.verifications.append((to_email, verify_link))
+
+    async def send_project_invitation(self, to_email, to_name, project_name, invited_by) -> None:
+        self.invitations.append((to_email, project_name, invited_by))
+
+
+def _token_de_enlace(enlace: str) -> str:
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(enlace).query)["token"][0]
+
+
 class _FakeContainer(Container):
     """Contenedor de pruebas: mismo grafo, modelo guionado y base en memoria."""
 
@@ -101,6 +129,7 @@ class _FakeContainer(Container):
         self.language_model = ScriptedLanguageModel(
             deque([exploitable([6, 7]) for _ in range(20)])
         )
+        self.email = FakeEmail()
 
 
 @pytest_asyncio.fixture
@@ -191,6 +220,128 @@ async def _token(client: AsyncClient, role: str = "investigador") -> str:
 
 def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+class TestCuentasYCorreo:
+    async def _registrar(self, client, email, password="contrasena-segura"):
+        return await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": password}
+        )
+
+    async def test_el_registro_envia_verificacion(self, client):
+        await self._registrar(client, "ver@upc.edu.pe")
+        correo = app.state.container.email
+        assert any(e == "ver@upc.edu.pe" for e, _ in correo.verifications)
+
+    async def test_verificar_el_correo_vale_una_vez(self, client):
+        await self._registrar(client, "conf@upc.edu.pe")
+        enlace = [
+            enl for e, enl in app.state.container.email.verifications if e == "conf@upc.edu.pe"
+        ][-1]
+        token = _token_de_enlace(enlace)
+        r = await client.post("/api/v1/auth/verify", json={"token": token})
+        assert r.status_code == 204
+        r2 = await client.post("/api/v1/auth/verify", json={"token": token})
+        assert r2.status_code == 400
+
+    async def test_olvido_restablece_la_clave_y_el_enlace_vale_una_vez(self, client):
+        await self._registrar(client, "olvido@upc.edu.pe", "clave-vieja-1")
+        r = await client.post(
+            "/api/v1/auth/password/forgot", json={"email": "olvido@upc.edu.pe"}
+        )
+        assert r.status_code == 202
+        token = _token_de_enlace(app.state.container.email.resets[-1][1])
+
+        r = await client.post(
+            "/api/v1/auth/password/reset",
+            json={"token": token, "new_password": "clave-nueva-2"},
+        )
+        assert r.status_code == 204
+
+        buena = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "olvido@upc.edu.pe", "password": "clave-nueva-2"},
+        )
+        assert buena.status_code == 200
+        mala = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "olvido@upc.edu.pe", "password": "clave-vieja-1"},
+        )
+        assert mala.status_code == 401
+
+        otra = await client.post(
+            "/api/v1/auth/password/reset",
+            json={"token": token, "new_password": "clave-otra-3"},
+        )
+        assert otra.status_code == 400
+
+    async def test_olvido_de_un_correo_inexistente_responde_igual(self, client):
+        antes = len(app.state.container.email.resets)
+        r = await client.post(
+            "/api/v1/auth/password/forgot", json={"email": "nadie@upc.edu.pe"}
+        )
+        assert r.status_code == 202
+        assert len(app.state.container.email.resets) == antes
+
+    async def test_restablecer_con_token_invalido_se_rechaza(self, client):
+        r = await client.post(
+            "/api/v1/auth/password/reset",
+            json={"token": "inventado", "new_password": "clave-nueva-1"},
+        )
+        assert r.status_code == 400
+
+    async def test_cambiar_la_clave_estando_dentro(self, client):
+        await self._registrar(client, "cambio@upc.edu.pe", "clave-actual-1")
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "cambio@upc.edu.pe", "password": "clave-actual-1"},
+        )
+        token = login.json()["access_token"]
+        r = await client.post(
+            "/api/v1/auth/password/change",
+            json={"current_password": "clave-actual-1", "new_password": "clave-nueva-2"},
+            headers=_auth(token),
+        )
+        assert r.status_code == 204
+        buena = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "cambio@upc.edu.pe", "password": "clave-nueva-2"},
+        )
+        assert buena.status_code == 200
+
+    async def test_cambiar_con_la_actual_equivocada_no_procede(self, client):
+        await self._registrar(client, "cambio2@upc.edu.pe", "clave-actual-1")
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "cambio2@upc.edu.pe", "password": "clave-actual-1"},
+        )
+        token = login.json()["access_token"]
+        r = await client.post(
+            "/api/v1/auth/password/change",
+            json={"current_password": "equivocada", "new_password": "clave-nueva-2"},
+            headers=_auth(token),
+        )
+        assert r.status_code == 401
+
+    async def test_invitar_al_proyecto_notifica_por_correo(self, client):
+        lider = await _token(client, "lider_tecnico")
+        pr = await client.post(
+            "/api/v1/projects",
+            json={"name": "Proyecto con correo"},
+            headers=_auth(lider),
+        )
+        pid = pr.json()["id"]
+        await self._registrar(client, "invitado@upc.edu.pe")
+        r = await client.post(
+            f"/api/v1/projects/{pid}/members",
+            params={"email": "invitado@upc.edu.pe"},
+            headers=_auth(lider),
+        )
+        assert r.status_code == 201
+        assert any(
+            e == "invitado@upc.edu.pe"
+            for e, _, _ in app.state.container.email.invitations
+        )
 
 
 class TestHealth:

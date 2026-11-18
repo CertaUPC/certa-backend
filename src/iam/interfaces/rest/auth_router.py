@@ -1,5 +1,6 @@
 """Inicio de sesión, registro de usuarios y credenciales acotadas."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -8,12 +9,23 @@ from sqlalchemy import select
 
 from ....shared.rest import ContainerDep, SessionDep
 from ...domain.access_grant import GrantKind, InvalidGrant, mint, parse
+from ...infrastructure.persistence.account_token_repository import (
+    SqlAccountTokenRepository,
+)
 from ...infrastructure.persistence.grant_repository import (
     SqlAccessGrantRepository,
 )
 from ...infrastructure.persistence.models import RoleChangeRow, UserRow
-from ...infrastructure.security import hash_password, issue_token, verify_password
+from ...infrastructure.security import (
+    hash_account_token,
+    hash_password,
+    issue_token,
+    mint_account_token,
+    verify_password,
+)
 from ..schemas.schemas import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     GrantExchangeRequest,
     GrantRequest,
     GrantResponse,
@@ -21,13 +33,34 @@ from ..schemas.schemas import (
     LoginRequest,
     ParticipantAccessRequest,
     ParticipantAccessResponse,
+    ResetPasswordRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
 from .dependencies import UserDep
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Acceso"])
 
 ROLES = ("desarrollador", "investigador", "lider_tecnico")
+
+# Vida de los enlaces de correo. El de restablecer es corto porque abre la
+# puerta a fijar contraseña; el de verificar solo confirma la dirección.
+RESET_TTL = timedelta(hours=1)
+VERIFY_TTL = timedelta(hours=24)
+
+
+async def _emitir_verificacion(container, session, user_id: str, email: str) -> None:
+    raw, huella = mint_account_token()
+    await SqlAccountTokenRepository(session).issue(
+        user_id, "verify", huella, datetime.now(timezone.utc) + VERIFY_TTL
+    )
+    enlace = f"{container.settings.app_base_url}/verificar?token={raw}"
+    try:
+        await container.email.send_email_verification(email, email, enlace)
+    except Exception:
+        logger.warning("No se pudo enviar la verificación a %s", email, exc_info=True)
 
 # Cuánto vive el JWT del canje. Corto a propósito: la credencial larga viaja
 # una vez por sesión de trabajo y no en cada petición, y una revocación surte
@@ -79,7 +112,9 @@ async def login(
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(body: LoginRequest, session: SessionDep) -> dict:
+async def register(
+    body: LoginRequest, session: SessionDep, container: ContainerDep
+) -> dict:
     """Alta de cuenta, siempre con el rol de menor privilegio.
 
     El rol ya no se pide. Antes viajaba como parametro y el alta era publica,
@@ -103,6 +138,7 @@ async def register(body: LoginRequest, session: SessionDep) -> dict:
     user_id = str(uuid4())
     session.add(UserRow(id=user_id, email=email, password_hash=hashed, role=role))
     await session.commit()
+    await _emitir_verificacion(container, session, user_id, email)
     return {"id": user_id, "email": email, "role": role}
 
 
@@ -462,3 +498,135 @@ async def participant_access(
         or None,
         discarded_decisions=descartadas,
     )
+
+
+@router.post("/password/forgot", status_code=status.HTTP_202_ACCEPTED)
+async def forgot_password(
+    body: ForgotPasswordRequest, session: SessionDep, container: ContainerDep
+) -> dict:
+    """Pide el enlace para restablecer. Responde siempre 202.
+
+    No dice si el correo existe: confirmarlo delataría qué cuentas hay.
+    """
+    email = body.email.lower().strip()
+    row = (
+        await session.execute(select(UserRow).where(UserRow.email == email))
+    ).scalar_one_or_none()
+    if row is not None and row.is_active:
+        raw, huella = mint_account_token()
+        await SqlAccountTokenRepository(session).issue(
+            row.id, "reset", huella, datetime.now(timezone.utc) + RESET_TTL
+        )
+        enlace = f"{container.settings.app_base_url}/restablecer?token={raw}"
+        try:
+            await container.email.send_password_reset(row.email, row.email, enlace)
+        except Exception:
+            logger.warning("No se pudo enviar el restablecimiento a %s", email, exc_info=True)
+    return {
+        "message": "Si el correo tiene una cuenta, enviamos un enlace para "
+        "restablecer la contraseña."
+    }
+
+
+@router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(
+    body: ResetPasswordRequest, session: SessionDep, container: ContainerDep
+) -> None:
+    """Fija una contraseña nueva con el token del correo. El enlace vale una vez."""
+    invalido = HTTPException(
+        status.HTTP_400_BAD_REQUEST, "El enlace no es válido o ya venció"
+    )
+    # Se valida la contraseña antes de consumir el token: una muy corta no debe
+    # quemar el enlace.
+    try:
+        hashed = hash_password(body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    user_id = await SqlAccountTokenRepository(session).claim(
+        hash_account_token(body.token), "reset"
+    )
+    if user_id is None:
+        raise invalido
+    row = (
+        await session.execute(select(UserRow).where(UserRow.id == user_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise invalido
+    row.password_hash = hashed
+    await session.commit()
+    try:
+        await container.email.send_password_changed(row.email, row.email)
+    except Exception:
+        logger.warning("No se pudo avisar del cambio a %s", row.email, exc_info=True)
+
+
+@router.post("/password/change", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    body: ChangePasswordRequest,
+    session: SessionDep,
+    container: ContainerDep,
+    user: UserDep,
+) -> None:
+    """Cambia la contraseña de la cuenta en curso, verificando la actual."""
+    if not user.user_id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Solo una cuenta de persona cambia su contraseña"
+        )
+    row = (
+        await session.execute(select(UserRow).where(UserRow.id == str(user.user_id)))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa cuenta")
+    if not verify_password(body.current_password, row.password_hash):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "La contraseña actual no es correcta"
+        )
+    try:
+        row.password_hash = hash_password(body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    await session.commit()
+    try:
+        await container.email.send_password_changed(row.email, row.email)
+    except Exception:
+        logger.warning("No se pudo avisar del cambio a %s", row.email, exc_info=True)
+
+
+@router.post("/verify", status_code=status.HTTP_204_NO_CONTENT)
+async def verify_email(body: VerifyEmailRequest, session: SessionDep) -> None:
+    """Confirma el correo con el token del enlace. Vale una vez."""
+    invalido = HTTPException(
+        status.HTTP_400_BAD_REQUEST, "El enlace no es válido o ya venció"
+    )
+    user_id = await SqlAccountTokenRepository(session).claim(
+        hash_account_token(body.token), "verify"
+    )
+    if user_id is None:
+        raise invalido
+    row = (
+        await session.execute(select(UserRow).where(UserRow.id == user_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise invalido
+    row.email_verified = True
+    await session.commit()
+
+
+@router.post("/verify/request", status_code=status.HTTP_202_ACCEPTED)
+async def request_verification(
+    session: SessionDep, container: ContainerDep, user: UserDep
+) -> dict:
+    """Reenvía el correo de verificación a la cuenta en curso."""
+    if not user.user_id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Solo una cuenta de persona verifica su correo"
+        )
+    row = (
+        await session.execute(select(UserRow).where(UserRow.id == str(user.user_id)))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No existe esa cuenta")
+    if row.email_verified:
+        return {"message": "El correo ya está verificado."}
+    await _emitir_verificacion(container, session, row.id, row.email)
+    return {"message": "Enviamos un enlace de verificación."}

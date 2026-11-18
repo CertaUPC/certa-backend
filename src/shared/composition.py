@@ -68,6 +68,17 @@ class Container:
 
         self.language_model = self._build_language_model()
         self.ground_truth = self._build_ground_truth()
+        self.email = self._build_email()
+
+    def _build_email(self):
+        from ..iam.infrastructure.email.brevo_email_service import BrevoEmailService
+
+        if not self.settings.email_configured:
+            logger.info(
+                "Correo en modo dev: sin clave de Brevo, los enlaces se "
+                "registran y no se envían."
+            )
+        return BrevoEmailService(self.settings)
 
     def _build_ground_truth(self):
         """Carga la verdad conocida del conjunto de referencia, si la hay.

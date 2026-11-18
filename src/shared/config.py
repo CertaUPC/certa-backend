@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     seed_admin_email: str = ""
     seed_admin_password: str = ""
 
+    # -- correo (Brevo) ---------------------------------------------------
+    # Transaccional por la API HTTP de Brevo (puerto 443): muchos hosts
+    # bloquean el SMTP saliente. Sin clave ni remitente, el adaptador corre en
+    # modo dev: registra el enlace y no envía, de modo que las pruebas y el
+    # banco nunca mandan correos reales, igual que el proveedor de modelo.
+    brevo_api_key: str = ""
+    email_sender_name: str = "Certa"
+    email_sender_address: str = ""
+    # Base de los enlaces de los correos (restablecer y verificar). Apunta al
+    # cliente web.
+    app_base_url: str = "http://localhost:5173"
+
     # -- proveedor de modelo ----------------------------------------------
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -96,6 +108,15 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def email_configured(self) -> bool:
+        """Sin clave ni remitente, el adaptador de correo corre en modo dev.
+
+        Igual que el proveedor de modelo: el servicio arranca sin él, y la
+        ausencia se nota al enviar (se registra el enlace) y no al desplegar.
+        """
+        return bool(self.brevo_api_key and self.email_sender_address)
 
     @property
     def llm_configured(self) -> bool:

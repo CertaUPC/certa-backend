@@ -14,6 +14,24 @@ class TokenResponse(BaseModel):
     role: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
 class GrantRequest(BaseModel):
     """Emisión de una credencial acotada.
 
