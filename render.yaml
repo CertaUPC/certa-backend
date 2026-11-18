@@ -30,6 +30,17 @@ services:
         sync: false
       - key: LLM_MODEL_VERSION
         sync: false
+      # Correo transaccional (Brevo). Sin estas variables el servicio corre en
+      # modo dev y no envia; se completan para enviar de verdad. La clave y el
+      # remitente son secretos; el resto va versionado.
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_SENDER_ADDRESS
+        sync: false
+      - key: EMAIL_SENDER_NAME
+        value: Certa
+      - key: APP_BASE_URL
+        value: https://certa-upc.netlify.app
       - key: BUDGET_MAX_QUERIES
         value: "3000"
       - key: DEBUG
