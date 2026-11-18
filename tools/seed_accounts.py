@@ -5,10 +5,11 @@ hacerlo un `lider_tecnico`. Como no existía ninguno, nadie podía conceder
 nada: es el problema del primero, y se resuelve sembrándolo fuera de la API,
 que es exactamente lo que hace esto.
 
-Crea dos cuentas y no toca la que ya existe:
+Crea tres cuentas y no toca la que ya existe:
 
     lider_tecnico   para demostrar la concesión de roles
     desarrollador   para demostrar lo que alguien sin permiso no puede hacer
+    investigador    para registrar y habilitar participantes del estudio
 
 Es idempotente: si la cuenta ya está, ajusta su rol y su contraseña en vez de
 fallar.
