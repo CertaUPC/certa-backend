@@ -71,13 +71,10 @@ class Container:
         self.email = self._build_email()
 
     def _build_email(self):
+        # Sin clave de Brevo el adaptador corre en modo dev: registra el enlace
+        # al enviar y no sale a la red. No hace falta avisarlo al arrancar.
         from ..iam.infrastructure.email.brevo_email_service import BrevoEmailService
 
-        if not self.settings.email_configured:
-            logger.info(
-                "Correo en modo dev: sin clave de Brevo, los enlaces se "
-                "registran y no se envían."
-            )
         return BrevoEmailService(self.settings)
 
     def _build_ground_truth(self):
